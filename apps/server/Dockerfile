@@ -18,7 +18,6 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nodeapp
 
 COPY --from=deps --chown=nodeapp:nodejs /app/node_modules ./node_modules
-COPY --from=deps --chown=nodeapp:nodejs /app/apps/server/node_modules ./apps/server/node_modules 2>/dev/null || true
 COPY --chown=nodeapp:nodejs apps/server ./apps/server
 COPY --chown=nodeapp:nodejs package.json ./
 
