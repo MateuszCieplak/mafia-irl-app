@@ -10,15 +10,16 @@ RUN pnpm install --frozen-lockfile --filter mafia-web
 
 # ── Build ──────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
-RUN corepack enable pnpm
 WORKDIR /app
+
+# Dodaj node_modules/.bin do PATH — next będzie widoczny z każdego katalogu
+ENV PATH="/app/node_modules/.bin:${PATH}"
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/package.json
 COPY apps/web ./apps/web
 
-# NEXT_PUBLIC_* vars muszą być dostępne w czasie budowania (bake into bundle)
 ARG NEXT_PUBLIC_SOCKET_URL
 ARG NEXT_PUBLIC_POCKETBASE_URL
 ARG NEXT_PUBLIC_ROOM_HOST_EMAIL
@@ -26,14 +27,15 @@ ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL \
     NEXT_PUBLIC_POCKETBASE_URL=$NEXT_PUBLIC_POCKETBASE_URL \
     NEXT_PUBLIC_ROOM_HOST_EMAIL=$NEXT_PUBLIC_ROOM_HOST_EMAIL
 
-# Buduj z rootu workspace — pnpm poprawnie resolvuje .bin z hoistowanego node_modules
-RUN pnpm --filter mafia-web build
+WORKDIR /app/apps/web
+RUN next build
 
 # ── Runner ─────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-ENV NODE_ENV=production
+ENV NODE_ENV=production \
+    PATH="/app/node_modules/.bin:${PATH}"
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
@@ -48,4 +50,4 @@ WORKDIR /app/apps/web
 EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0
 
-CMD ["/app/node_modules/.bin/next", "start"]
+CMD ["next", "start"]
