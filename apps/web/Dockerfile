@@ -12,9 +12,6 @@ RUN pnpm install --frozen-lockfile --filter mafia-web
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Dodaj node_modules/.bin do PATH — next będzie widoczny z każdego katalogu
-ENV PATH="/app/node_modules/.bin:${PATH}"
-
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/package.json
@@ -28,14 +25,13 @@ ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL \
     NEXT_PUBLIC_ROOM_HOST_EMAIL=$NEXT_PUBLIC_ROOM_HOST_EMAIL
 
 WORKDIR /app/apps/web
-RUN next build
+RUN /app/node_modules/.bin/next build
 
 # ── Runner ─────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-ENV NODE_ENV=production \
-    PATH="/app/node_modules/.bin:${PATH}"
+ENV NODE_ENV=production
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
@@ -50,4 +46,4 @@ WORKDIR /app/apps/web
 EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0
 
-CMD ["next", "start"]
+CMD ["/app/node_modules/.bin/next", "start"]
