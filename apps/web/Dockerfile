@@ -14,8 +14,9 @@ RUN corepack enable pnpm
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
+COPY package.json pnpm-workspace.yaml ./
+COPY apps/web/package.json ./apps/web/package.json
 COPY apps/web ./apps/web
-COPY package.json ./
 
 # NEXT_PUBLIC_* vars muszą być dostępne w czasie budowania (bake into bundle)
 ARG NEXT_PUBLIC_SOCKET_URL
@@ -25,12 +26,11 @@ ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL \
     NEXT_PUBLIC_POCKETBASE_URL=$NEXT_PUBLIC_POCKETBASE_URL \
     NEXT_PUBLIC_ROOM_HOST_EMAIL=$NEXT_PUBLIC_ROOM_HOST_EMAIL
 
-WORKDIR /app/apps/web
-RUN pnpm build
+# Buduj z rootu workspace — pnpm poprawnie resolvuje .bin z hoistowanego node_modules
+RUN pnpm --filter mafia-web build
 
 # ── Runner ─────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
-RUN corepack enable pnpm
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -41,12 +41,11 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next ./apps/web/.next
 COPY --chown=nextjs:nodejs apps/web/package.json ./apps/web/package.json
-COPY --chown=nextjs:nodejs package.json ./
 
 USER nextjs
-WORKDIR /app/apps/web
 
+WORKDIR /app/apps/web
 EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0
 
-CMD ["pnpm", "start"]
+CMD ["/app/node_modules/.bin/next", "start"]
