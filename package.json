@@ -1,0 +1,17 @@
+{
+  "name": "mafia-irl",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "dev": "concurrently -n web,server -c cyan,magenta \"pnpm --filter mafia-web dev\" \"pnpm --filter mafia-server dev\"",
+    "dev:lan": "node scripts/run-dev-lan.mjs",
+    "lan-ip": "node scripts/detect-lan-ip.mjs",
+    "dev:web": "pnpm --filter mafia-web dev",
+    "dev:server": "pnpm --filter mafia-server dev",
+    "test": "pnpm --filter mafia-server test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "dotenv": "^16.4.7"
+  }
+}

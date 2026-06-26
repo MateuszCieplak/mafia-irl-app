@@ -1,0 +1,73 @@
+[
+  {
+    "name": "rooms",
+    "type": "base",
+    "schema": [
+      { "name": "code", "type": "text", "required": true, "options": { "min": 5, "max": 5 } },
+      { "name": "host_id", "type": "relation", "required": true, "options": { "collectionId": "_pb_users_auth_", "maxSelect": 1 } },
+      { "name": "status", "type": "select", "required": true, "options": { "values": ["lobby", "in_progress", "finished"] } },
+      { "name": "settings", "type": "json" }
+    ],
+    "indexes": [
+      "CREATE UNIQUE INDEX idx_rooms_code ON rooms (code)"
+    ]
+  },
+  {
+    "name": "room_players",
+    "type": "base",
+    "schema": [
+      { "name": "room_id", "type": "relation", "required": true, "options": { "collectionId": "rooms", "maxSelect": 1 } },
+      { "name": "user_id", "type": "relation", "required": true, "options": { "collectionId": "_pb_users_auth_", "maxSelect": 1 } },
+      { "name": "role", "type": "select", "options": { "values": ["citizen", "detective", "doctor", "mafia"] } },
+      { "name": "is_master", "type": "bool" },
+      { "name": "is_bot", "type": "bool" },
+      { "name": "eliminated_at", "type": "date" },
+      { "name": "seat_order", "type": "number" }
+    ],
+    "indexes": [
+      "CREATE UNIQUE INDEX idx_room_players_unique ON room_players (room_id, user_id)"
+    ]
+  },
+  {
+    "name": "rounds",
+    "type": "base",
+    "schema": [
+      { "name": "room_id", "type": "relation", "required": true, "options": { "collectionId": "rooms", "maxSelect": 1 } },
+      { "name": "round_number", "type": "number", "required": true },
+      { "name": "phase", "type": "select", "required": true, "options": { "values": ["night_detective", "night_doctor", "night_mafia", "night_resolve", "day_deliberation", "day_vote", "day_resolve"] } }
+    ]
+  },
+  {
+    "name": "night_actions",
+    "type": "base",
+    "schema": [
+      { "name": "round_id", "type": "relation", "required": true, "options": { "collectionId": "rounds", "maxSelect": 1 } },
+      { "name": "actor_id", "type": "relation", "required": true, "options": { "collectionId": "_pb_users_auth_", "maxSelect": 1 } },
+      { "name": "action_type", "type": "select", "required": true, "options": { "values": ["investigate", "protect", "kill"] } },
+      { "name": "target_id", "type": "relation", "required": true, "options": { "collectionId": "_pb_users_auth_", "maxSelect": 1 } },
+      { "name": "result", "type": "json" }
+    ]
+  },
+  {
+    "name": "votes",
+    "type": "base",
+    "schema": [
+      { "name": "round_id", "type": "relation", "required": true, "options": { "collectionId": "rounds", "maxSelect": 1 } },
+      { "name": "voter_id", "type": "relation", "required": true, "options": { "collectionId": "_pb_users_auth_", "maxSelect": 1 } },
+      { "name": "target_id", "type": "relation", "options": { "collectionId": "_pb_users_auth_", "maxSelect": 1 } }
+    ],
+    "indexes": [
+      "CREATE UNIQUE INDEX idx_votes_unique ON votes (round_id, voter_id)"
+    ]
+  },
+  {
+    "name": "messages",
+    "type": "base",
+    "schema": [
+      { "name": "room_id", "type": "relation", "required": true, "options": { "collectionId": "rooms", "maxSelect": 1 } },
+      { "name": "user_id", "type": "relation", "required": true, "options": { "collectionId": "_pb_users_auth_", "maxSelect": 1 } },
+      { "name": "channel", "type": "select", "required": true, "options": { "values": ["lobby", "day", "mafia_night"] } },
+      { "name": "body", "type": "text", "required": true }
+    ]
+  }
+]

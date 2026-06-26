@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-night text-white antialiased;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center rounded-xl px-5 py-3 font-semibold
+           transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none
+           text-sm min-h-[48px];
+  }
+  .btn-primary {
+    @apply btn bg-blood text-white hover:bg-red-800;
+  }
+  .btn-secondary {
+    @apply btn bg-white/10 text-white hover:bg-white/20;
+  }
+  .btn-town {
+    @apply btn bg-town text-white hover:bg-blue-800;
+  }
+  .input {
+    @apply w-full rounded-xl bg-white/10 px-4 py-3 text-white placeholder:text-white/40
+           outline-none ring-1 ring-white/10 focus:ring-white/30 transition min-h-[48px];
+  }
+  .card {
+    @apply rounded-2xl bg-white/5 border border-white/10 p-4;
+  }
+}
