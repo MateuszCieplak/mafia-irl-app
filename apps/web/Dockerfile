@@ -1,20 +1,14 @@
-FROM node:20-alpine AS deps
+FROM node:20-alpine
 RUN corepack enable pnpm
 WORKDIR /app
 
+# Instalacja zależności
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/package.json
 COPY apps/server/package.json ./apps/server/package.json
-
 RUN pnpm install --frozen-lockfile --filter mafia-web
 
-# ── Build ──────────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
-WORKDIR /app
-
-COPY --from=deps /app/node_modules ./node_modules
-COPY package.json pnpm-workspace.yaml ./
-COPY apps/web/package.json ./apps/web/package.json
+# Skopiuj kod i zbuduj
 COPY apps/web ./apps/web
 
 ARG NEXT_PUBLIC_SOCKET_URL
@@ -27,23 +21,6 @@ ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL \
 WORKDIR /app/apps/web
 RUN /app/node_modules/.bin/next build
 
-# ── Runner ─────────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS runner
-WORKDIR /app
-
-ENV NODE_ENV=production
-
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
-
-COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next ./apps/web/.next
-COPY --chown=nextjs:nodejs apps/web/package.json ./apps/web/package.json
-
-USER nextjs
-
-WORKDIR /app/apps/web
+ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
 EXPOSE 3000
-ENV PORT=3000 HOSTNAME=0.0.0.0
-
 CMD ["/app/node_modules/.bin/next", "start"]
