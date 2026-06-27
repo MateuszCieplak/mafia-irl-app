@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { useSocket } from '@/lib/useSocket';
 import PlayerList from '@/components/PlayerList';
 import Chat from '@/components/Chat';
+import RoomSettingsPanel from '@/components/RoomSettingsPanel';
 
 export default function RoomPage() {
   const { code } = useParams();
@@ -18,6 +19,8 @@ export default function RoomPage() {
   const [copyHint, setCopyHint] = useState('');
   const [inviteHint, setInviteHint] = useState('');
   const [addingBot, setAddingBot] = useState(false);
+  const [roomSettings, setRoomSettings] = useState(null);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   const minPlayers = 4;
   const isMaster = useMemo(
@@ -44,6 +47,10 @@ export default function RoomPage() {
       }
     });
 
+    emit('get_game_state', {}).then((res) => {
+      if (res?.settings) setRoomSettings(res.settings);
+    });
+
     const syncPlayers = (list) => setPlayers(list || []);
 
     const offJoin = on('player_joined', (data) => {
@@ -58,12 +65,16 @@ export default function RoomPage() {
     const offStart = on('game_started', () => {
       router.push(`/game/${code}`);
     });
+    const offSettings = on('room_settings_updated', (data) => {
+      if (data?.settings) setRoomSettings(data.settings);
+    });
 
     return () => {
       offJoin?.();
       offSync?.();
       offLeave?.();
       offStart?.();
+      offSettings?.();
     };
   }, [connected, code, user?.id, emit, on, router]);
 
@@ -87,6 +98,20 @@ export default function RoomPage() {
         no_room: 'Utracono połączenie z pokojem. Odśwież stronę i spróbuj ponownie.',
       };
       alert(errMap[res?.error] || res?.error || 'Nie można rozpocząć gry');
+    }
+  }
+
+  async function handleSaveSettings(settings) {
+    setSavingSettings(true);
+    try {
+      const res = await emit('update_room_settings', { settings });
+      if (!res?.ok) {
+        alert(res?.error || 'Nie udało się zapisać ustawień');
+      } else if (res.settings) {
+        setRoomSettings(res.settings);
+      }
+    } finally {
+      setSavingSettings(false);
     }
   }
 
@@ -246,6 +271,16 @@ export default function RoomPage() {
             ))}
           </ul>
           {inviteHint ? <p className="text-xs mt-2 text-white/60">{inviteHint}</p> : null}
+        </div>
+      )}
+
+      {isMaster && (
+        <div className="px-4 py-3 border-b border-white/10">
+          <RoomSettingsPanel
+            settings={roomSettings}
+            onSave={handleSaveSettings}
+            saving={savingSettings}
+          />
         </div>
       )}
 
