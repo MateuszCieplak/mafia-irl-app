@@ -40,6 +40,7 @@ export function registerLobbyHandlers(io, socket, pb) {
           phase_timer_doctor_sec: 30,
           phase_timer_mafia_sec: 120,
           phase_timer_deliberation_sec: 300,
+          phase_timer_vote_sec: 60,
           // Lobby grace period before removing a disconnected guest (ms).
           lobby_disconnect_grace_ms: 120000,
         },
@@ -215,6 +216,48 @@ export function registerLobbyHandlers(io, socket, pb) {
       callback?.({ ok: true, bot });
     } catch (err) {
       console.error('[lobby] add_bot error:', err.message);
+      callback?.({ ok: false, error: err.message });
+    }
+  });
+
+  socket.on('update_room_settings', async (data, callback) => {
+    try {
+      const state = rooms.get(socket.roomId);
+      if (!state) return callback?.({ ok: false, error: 'no_room' });
+      if (socket.userId !== state.hostId) {
+        return callback?.({ ok: false, error: 'not_master' });
+      }
+      if (state.status !== 'lobby') {
+        return callback?.({ ok: false, error: 'not_in_lobby' });
+      }
+
+      const allowedKeys = [
+        'min_players',
+        'max_players',
+        'doctor_can_self_protect',
+        'doctor_repeat_protect',
+        'phase_timer_detective_sec',
+        'phase_timer_doctor_sec',
+        'phase_timer_mafia_sec',
+        'phase_timer_deliberation_sec',
+        'phase_timer_vote_sec',
+        'self_vote',
+      ];
+
+      const nextSettings = { ...(state.settings || {}) };
+      for (const key of allowedKeys) {
+        if (data?.settings && Object.prototype.hasOwnProperty.call(data.settings, key)) {
+          nextSettings[key] = data.settings[key];
+        }
+      }
+
+      await pb.collection('rooms').update(state.id, { settings: nextSettings });
+      state.settings = nextSettings;
+
+      io.to(`room:${state.code}`).emit('room_settings_updated', { settings: nextSettings });
+      callback?.({ ok: true, settings: nextSettings });
+    } catch (err) {
+      console.error('[lobby] update_room_settings error:', err.message);
       callback?.({ ok: false, error: err.message });
     }
   });

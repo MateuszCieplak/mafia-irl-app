@@ -22,7 +22,14 @@ export function registerChatHandlers(io, socket, pb) {
       return callback?.({ ok: false, error: 'not_in_room' });
     }
 
+    if (channel === 'day') {
+      return callback?.({ ok: false, error: 'channel_disabled' });
+    }
+
     if (channel === 'mafia_night') {
+      if (state.phase !== 'night_mafia') {
+        return callback?.({ ok: false, error: 'wrong_phase' });
+      }
       const rp = await pb.collection('room_players').getList(1, 1, {
         filter: `room_id = "${state.id}" && user_id = "${socket.userId}"`,
         requestKey: null,
@@ -80,15 +87,12 @@ export function registerChatHandlers(io, socket, pb) {
     }
 
     if (channel === 'day') {
-      if (state.status === 'finished') {
-        return ack({ ok: false, error: 'game_finished' });
-      }
-      const rp = await pb.collection('room_players').getList(1, 1, {
-        filter: `room_id = "${state.id}" && user_id = "${socket.userId}"`,
-        requestKey: null,
-      });
-      if (rp.items.length > 0 && rp.items[0].eliminated_at) {
-        return ack({ ok: false, error: 'eliminated' });
+      return ack({ ok: false, error: 'channel_disabled' });
+    }
+
+    if (channel === 'mafia_night') {
+      if (state.phase !== 'night_mafia') {
+        return ack({ ok: false, error: 'wrong_phase' });
       }
     }
 

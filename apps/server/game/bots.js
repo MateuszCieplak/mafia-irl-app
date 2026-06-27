@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { processNightAction, processVote } from './actions.js';
 import { buildRoomPlayerList } from './roomPlayers.js';
+import { tryAutoAdvance } from './phaseFlow.js';
 
 const BOT_DELAY_MIN_MS = 500;
 const BOT_DELAY_MAX_MS = 1500;
@@ -192,6 +193,7 @@ async function runBotDetective(io, state, pb, botId) {
   if (res?.ok && res.result) {
     recordDetectiveResult(state, targetId, res.result.is_mafia);
   }
+  if (res?.ok) await tryAutoAdvance(io, state, pb);
 }
 
 async function runBotDoctor(io, state, pb, botId) {
@@ -205,6 +207,7 @@ async function runBotDoctor(io, state, pb, botId) {
   if (!targetId) return;
 
   await processNightAction(io, state, pb, botId, targetId);
+  await tryAutoAdvance(io, state, pb);
 }
 
 async function runBotMafia(io, state, pb, botId) {
@@ -218,6 +221,7 @@ async function runBotMafia(io, state, pb, botId) {
   if (!targetId) return;
 
   await processNightAction(io, state, pb, botId, targetId);
+  await tryAutoAdvance(io, state, pb);
 }
 
 async function runBotVote(io, state, pb, botId) {
@@ -230,6 +234,7 @@ async function runBotVote(io, state, pb, botId) {
   const targetId = pickVoteTarget(state, botId, aliveIds);
 
   await processVote(io, state, pb, botId, targetId);
+  await tryAutoAdvance(io, state, pb);
 }
 
 /**
