@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/AuthContext';
 import { useSocket } from '@/lib/useSocket';
 import MafiaLogo from '@/components/MafiaLogo';
@@ -37,6 +37,7 @@ const ACTION_WAITING = {
 
 export default function GamePage() {
   const { code } = useParams();
+  const router = useRouter();
   const { user } = useAuth();
   const { emit, on, connected } = useSocket();
 
@@ -273,13 +274,52 @@ export default function GamePage() {
   }
 
   if (gameOver) {
+    const mafiaWon = gameOver.winner === 'mafia';
     return (
-      <div className="h-dvh flex flex-col items-center justify-center px-6 gap-6 bg-night overflow-y-auto py-8">
-        <h1 className="font-display text-4xl font-bold animate-reveal-in">
-          {gameOver.winner === 'mafia' ? 'Mafia wygrywa!' : 'Miasto wygrywa!'}
-        </h1>
-        <p className="text-white/50">Wszystkie role ujawnione</p>
-        <PlayerList players={players} showRoles gridLayout />
+      <div
+        className={`h-dvh flex flex-col items-center justify-center px-6 gap-5 overflow-y-auto py-10 ${
+          mafiaWon ? 'bg-role-mafia' : 'bg-role-detective'
+        }`}
+      >
+        {/* Winner banner */}
+        <div className="text-center animate-reveal-in">
+          <p className="text-xs uppercase tracking-[0.3em] text-white/40 mb-2">Koniec gry</p>
+          <h1
+            className={`font-display text-5xl font-bold ${
+              mafiaWon ? 'text-role-mafia' : 'text-role-detective'
+            }`}
+          >
+            {mafiaWon ? 'Mafia wygrywa!' : 'Miasto wygrywa!'}
+          </h1>
+          <p className="text-white/40 text-sm mt-2">
+            Runda {round} · wszystkie role ujawnione
+          </p>
+        </div>
+
+        {/* Player list with roles */}
+        <div className="w-full max-w-md">
+          <PlayerList players={players} showRoles gridLayout />
+        </div>
+
+        {/* Navigation buttons */}
+        <div className="flex flex-col sm:flex-row gap-3 mt-2 w-full max-w-xs animate-reveal-in">
+          {isMaster && (
+            <button
+              type="button"
+              onClick={() => router.push(`/room/${code}`)}
+              className="btn-primary flex-1 text-center"
+            >
+              Wróć do pokoju
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => router.push('/lobby')}
+            className="flex-1 px-4 py-2 rounded-lg border border-white/20 text-white/70 hover:text-white hover:border-white/40 text-sm font-semibold transition-colors text-center"
+          >
+            Strona główna
+          </button>
+        </div>
       </div>
     );
   }
