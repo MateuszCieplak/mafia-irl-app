@@ -10,11 +10,15 @@ const PHASE_LABELS = {
   day_resolve: { label: 'Dzień — Rozstrzygnięcie', color: 'bg-yellow-900/50 text-yellow-300' },
 };
 
-export default function PhaseBadge({ phase, round }) {
-  const info = PHASE_LABELS[phase] || { label: phase, color: 'bg-white/10 text-white/60' };
+export default function PhaseBadge({ phase, round, compact = false }) {
+  const info = PHASE_LABELS[phase] || { label: phase || 'Oczekiwanie', color: 'bg-white/10 text-white/60' };
   return (
-    <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${info.color}`}>
-      {round && <span className="opacity-60">R{round}</span>}
+    <div
+      className={`inline-flex items-center gap-2 rounded-full font-semibold ${info.color} ${
+        compact ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-xs'
+      }`}
+    >
+      {round ? <span className="opacity-60">R{round}</span> : null}
       <span>{info.label}</span>
     </div>
   );

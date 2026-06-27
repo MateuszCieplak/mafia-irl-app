@@ -1,18 +1,32 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@/lib/AuthContext';
 import { useSocket } from '@/lib/useSocket';
-import PlayerList from '@/components/PlayerList';
+import MafiaLogo from '@/components/MafiaLogo';
+import GameMenu from '@/components/GameMenu';
+import TurnTimer from '@/components/TurnTimer';
 import PhaseBadge from '@/components/PhaseBadge';
 import NightActionPicker from '@/components/NightActionPicker';
 import VotePanel from '@/components/VotePanel';
 import MasterControls from '@/components/MasterControls';
 import MasterInsightFeed from '@/components/MasterInsightFeed';
 import Chat from '@/components/Chat';
-import Notepad from '@/components/Notepad';
-import PlayerPhaseInfo from '@/components/PlayerPhaseInfo';
+import VerdictReveal from '@/components/VerdictReveal';
+import PlayerList from '@/components/PlayerList';
+import { ROLE_LABELS, ROLE_COLORS, ROLE_BG } from '@/lib/roleTheme';
+
+const PHASE_FLAVOR = {
+  null: 'Zapada noc…',
+  night_detective: 'Detektyw sprawdza podejrzanego…',
+  night_doctor: 'Lekarz chroni wybraną osobę…',
+  night_mafia: 'Mafia naradza się w cieniu…',
+  night_resolve: 'Noc dobiega końca…',
+  day_deliberation: 'Czas na dyskusję',
+  day_vote: 'Czas głosowania',
+  day_resolve: 'Rozstrzygnięcie głosowania…',
+};
 
 export default function GamePage() {
   const { code } = useParams();
@@ -29,44 +43,56 @@ export default function GamePage() {
   const [voteSubmitted, setVoteSubmitted] = useState(false);
   const [submissions, setSubmissions] = useState({});
   const [gameOver, setGameOver] = useState(null);
-  const [showRole, setShowRole] = useState(true);
   const [insightFeed, setInsightFeed] = useState([]);
-  const [lastResult, setLastResult] = useState(null);
   const [stateLoaded, setStateLoaded] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [phaseDeadline, setPhaseDeadline] = useState(null);
+  const [detectiveHistory, setDetectiveHistory] = useState([]);
+  const [lastDoctorTarget, setLastDoctorTarget] = useState(null);
+  const [phaseKey, setPhaseKey] = useState(0);
+  const [pendingVerdict, setPendingVerdict] = useState(null);
+  const [recentlyEliminatedId, setRecentlyEliminatedId] = useState(null);
+  const [showActionOverlay, setShowActionOverlay] = useState(false);
+
+  const loadState = useCallback(async () => {
+    const res = await emit('get_game_state', {});
+    if (res?.ok) {
+      setPhase(res.phase);
+      setRound(res.round);
+      setRole(res.role);
+      setPlayers(res.players || []);
+      setIsMaster(res.isMaster || res.players?.some((p) => p.id === user?.id && p.isMaster));
+      setPhaseDeadline(res.phaseDeadline ?? null);
+      setDetectiveHistory(res.your_action_history?.detective || []);
+      setLastDoctorTarget(res.lastDoctorTarget ?? null);
+    }
+    setStateLoaded(true);
+  }, [emit, user?.id]);
 
   useEffect(() => {
     if (!connected) return;
 
     setStateLoaded(false);
-    // Najpierw join_room (ustawia socket.roomId na serwerze), potem get_game_state.
-    // Bez tego łańcucha get_game_state często leci szybciej i zwraca no_room.
     (async () => {
       await emit('join_room', { code });
-      const res = await emit('get_game_state', {});
-      if (res?.ok) {
-        setPhase(res.phase);
-        setRound(res.round);
-        setRole(res.role);
-        setPlayers(res.players || []);
-        setIsMaster(res.players?.some((p) => p.id === user?.id && p.isMaster));
-      }
-      setStateLoaded(true);
+      await loadState();
     })();
 
     const offs = [
       on('game_started', (data) => {
         setRole(data.role);
-        setShowRole(true);
-        setTimeout(() => setShowRole(false), 5000);
       }),
       on('phase_changed', (data) => {
         setPhase(data.phase);
         setRound(data.round);
+        setPhaseDeadline(data.phaseDeadline ?? null);
         setActionSubmitted(false);
         setVoteSubmitted(false);
         setNightResult(undefined);
         setSubmissions({});
-        setLastResult(null);
+        setShowActionOverlay(false);
+        setPhaseKey((k) => k + 1);
+        setPendingVerdict(null);
       }),
       on('night_action_submitted', (data) => {
         setSubmissions((prev) => ({ ...prev, [data.role]: data.submitted }));
@@ -75,29 +101,42 @@ export default function GamePage() {
         if (data.eliminatedPlayerId) {
           setPlayers((prev) => {
             const updated = prev.map((p) =>
-              p.id === data.eliminatedPlayerId ? { ...p, eliminated: true } : p
+              p.id === data.eliminatedPlayerId ? { ...p, eliminated: true } : p,
             );
             const victim = updated.find((p) => p.id === data.eliminatedPlayerId);
-            setLastResult({
+            setRecentlyEliminatedId(data.eliminatedPlayerId);
+            setTimeout(() => setRecentlyEliminatedId(null), 3000);
+            setPendingVerdict({
               type: 'elimination',
+              source: 'night',
+              playerName: victim?.username || data.eliminatedPlayerId,
               message: `Tej nocy zginął(a): ${victim?.username || data.eliminatedPlayerId}`,
             });
             return updated;
           });
         } else {
-          setLastResult({ type: 'safe', message: 'Noc spokojna — nikt nie zginął' });
+          setPendingVerdict({
+            type: 'safe',
+            source: 'night',
+            message: 'Noc spokojna — nikt nie zginął',
+          });
         }
       }),
       on('vote_resolved', (data) => {
         if (data.eliminatedPlayerId) {
           setPlayers((prev) => {
             const updated = prev.map((p) =>
-              p.id === data.eliminatedPlayerId ? { ...p, eliminated: true } : p
+              p.id === data.eliminatedPlayerId ? { ...p, eliminated: true } : p,
             );
             const victim = updated.find((p) => p.id === data.eliminatedPlayerId);
-            setLastResult({
+            setRecentlyEliminatedId(data.eliminatedPlayerId);
+            setTimeout(() => setRecentlyEliminatedId(null), 3000);
+            setPendingVerdict({
               type: 'elimination',
+              source: 'vote',
+              playerName: victim?.username || data.eliminatedPlayerId,
               message: `Wioska wyrzuciła: ${victim?.username || data.eliminatedPlayerId}`,
+              autoShow: true,
             });
             return updated;
           });
@@ -108,13 +147,19 @@ export default function GamePage() {
               : data.outcome === 'vote_skipped'
               ? 'Głosowanie pominięte'
               : 'Brak rozstrzygnięcia';
-          setLastResult({ type: 'safe', message: msg });
+          setPendingVerdict({
+            type: 'safe',
+            source: 'vote',
+            outcome: data.outcome,
+            message: msg,
+            autoShow: true,
+          });
         }
       }),
       on('game_over', (data) => {
         setGameOver(data);
         setPlayers((prev) =>
-          prev.map((p) => ({ ...p, role: data.roles?.[p.id] }))
+          prev.map((p) => ({ ...p, role: data.roles?.[p.id] })),
         );
       }),
       on('player_joined', (data) => {
@@ -123,16 +168,23 @@ export default function GamePage() {
       on('master_game_insight', (data) => {
         setInsightFeed((prev) => [...prev, data]);
       }),
+      on('night_action_prompt', () => {
+        setShowActionOverlay(true);
+      }),
     ];
 
     return () => offs.forEach((off) => off?.());
-  }, [connected, code]);
+  }, [connected, code, emit, on, loadState]);
 
   async function handleNightAction(targetId) {
     const res = await emit('night_action', { targetId });
     if (res?.ok) {
       setActionSubmitted(true);
-      if (res.result) setNightResult(res.result);
+      if (res.result) {
+        setNightResult(res.result);
+        setDetectiveHistory((prev) => [...prev, { targetId, result: res.result }]);
+      }
+      setShowActionOverlay(false);
     }
   }
 
@@ -140,6 +192,7 @@ export default function GamePage() {
     const res = await emit('vote', { targetId });
     if (res?.ok) {
       setVoteSubmitted(true);
+      setShowActionOverlay(false);
     } else {
       const msgs = {
         eliminated: 'Jesteś wyeliminowany(a) — nie możesz głosować.',
@@ -149,8 +202,7 @@ export default function GamePage() {
         not_connected: 'Brak połączenia z serwerem.',
         timeout: 'Serwer nie odpowiedział — spróbuj ponownie.',
       };
-      const msg = msgs[res.error] || `Błąd głosowania: ${res.error || 'nieznany'}`;
-      alert(msg);
+      alert(msgs[res.error] || `Błąd głosowania: ${res.error || 'nieznany'}`);
     }
   }
 
@@ -171,18 +223,28 @@ export default function GamePage() {
     (role === 'mafia' && phase === 'night_mafia');
 
   const chatChannel =
-    phase?.startsWith('day') ? 'day' :
-    (role === 'mafia' && phase === 'night_mafia') ? 'mafia_night' :
-    null;
+    role === 'mafia' && phase === 'night_mafia' ? 'mafia_night' : null;
 
-  // Master nie bierze udziału w głosowaniu ani nocnych akcjach — filtrujemy go z listy celów.
   const alivePlayers = players.filter(
     (p) => !p.eliminated && p.id !== user?.id && !p.isMaster,
   );
 
+  const bgClass = isMaster ? ROLE_BG.master : ROLE_BG[role] || 'bg-night';
+  const roleColorClass = ROLE_COLORS[role] || 'text-white';
+  const roleLabel = isMaster ? 'Master' : ROLE_LABELS[role] || role;
+
+  const needsAction =
+    !isMaster &&
+    ((isNightPhaseForRole && !actionSubmitted) ||
+      (phase === 'day_vote' && !voteSubmitted));
+
+  useEffect(() => {
+    if (needsAction) setShowActionOverlay(true);
+  }, [needsAction, phase]);
+
   if (!stateLoaded) {
     return (
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center bg-night">
         <p className="text-white/40 text-sm animate-pulse">Ładowanie stanu gry…</p>
       </div>
     );
@@ -190,39 +252,30 @@ export default function GamePage() {
 
   if (gameOver) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6">
-        <h1 className="font-display text-4xl font-bold">
+      <div className="h-dvh flex flex-col items-center justify-center px-6 gap-6 bg-night">
+        <h1 className="font-display text-4xl font-bold animate-reveal-in">
           {gameOver.winner === 'mafia' ? 'Mafia wygrywa!' : 'Miasto wygrywa!'}
         </h1>
         <p className="text-white/50">Wszystkie role ujawnione</p>
-        <PlayerList players={players} showRoles />
+        <PlayerList players={players} showRoles gridLayout />
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-        <PhaseBadge phase={phase} round={round} />
-        <Notepad roomCode={code} />
-      </div>
+    <div className={`h-dvh overflow-hidden flex flex-col ${bgClass}`}>
+      {/* Top — logo M */}
+      <header className="shrink-0 flex justify-center pt-6 pb-2">
+        <MafiaLogo onClick={() => setMenuOpen(true)} />
+      </header>
 
-      {/* Role reveal */}
-      {showRole && role && (
-        <div className="mx-4 mt-3">
-          <div className={`card text-center py-6 ${role === 'mafia' ? 'border-blood/30' : 'border-town/30'}`}>
-            <p className="text-white/50 text-xs mb-1">Twoja rola</p>
-            <p className="font-display text-2xl font-bold capitalize">{role}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Main content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Master controls */}
-        {isMaster && (
-          <>
+      {/* Center — role or master panel hint */}
+      <main
+        key={phaseKey}
+        className="flex-1 flex flex-col items-center justify-center px-6 animate-phase-fade min-h-0"
+      >
+        {isMaster ? (
+          <div className="w-full max-w-md space-y-3 overflow-y-auto max-h-full py-2">
             <MasterControls
               phase={phase}
               submissions={submissions}
@@ -230,49 +283,105 @@ export default function GamePage() {
               onEndGame={handleEndGame}
             />
             <MasterInsightFeed entries={insightFeed} players={players} />
+            <div className="card">
+              <h3 className="font-display text-sm font-bold text-white/50 mb-2 uppercase tracking-wider">
+                Gracze
+              </h3>
+              <PlayerList players={players} showRoles gridLayout />
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="text-white/40 text-xs uppercase tracking-[0.25em] mb-2">Twoja rola</p>
+            <h1
+              className={`font-display text-5xl sm:text-6xl font-bold capitalize animate-role-reveal ${roleColorClass}`}
+            >
+              {roleLabel}
+            </h1>
+            {needsAction && !showActionOverlay && (
+              <button
+                type="button"
+                onClick={() => setShowActionOverlay(true)}
+                className="btn-primary mt-6 animate-phase-fade"
+              >
+                {isNightPhaseForRole ? 'Wykonaj akcję' : 'Głosuj'}
+              </button>
+            )}
           </>
         )}
+      </main>
 
-        {/* Statusy fazowe i wyniki dla graczy (nie mastera) */}
-        {!isMaster && (
-          <PlayerPhaseInfo phase={phase} lastResult={lastResult} />
-        )}
-
-        {/* Night action */}
-        {isNightPhaseForRole && (
-          <NightActionPicker
-            role={role}
-            players={alivePlayers}
-            onSubmit={handleNightAction}
-            disabled={actionSubmitted}
-            result={nightResult}
-          />
-        )}
-
-        {/* Day voting — master tylko obserwuje */}
-        {phase === 'day_vote' && !isMaster && (
-          <VotePanel
-            players={alivePlayers}
-            onVote={handleVote}
-            disabled={voteSubmitted}
-          />
-        )}
-
-        {/* Player list */}
-        <div className="card">
-          <h3 className="font-display text-sm font-bold text-white/50 mb-2 uppercase tracking-wider">
-            Gracze
-          </h3>
-          <PlayerList players={players} gridLayout />
+      {/* Bottom — turn info bar */}
+      <footer className="shrink-0 border-t border-white/10 bg-black/40 backdrop-blur-md px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <PhaseBadge phase={phase} round={round} compact />
+            <p className="text-white/45 text-xs mt-1 truncate italic">
+              {PHASE_FLAVOR[phase] ?? PHASE_FLAVOR.null}
+            </p>
+          </div>
+          <TurnTimer phaseDeadline={phaseDeadline} phase={phase} />
         </div>
-      </div>
+      </footer>
 
-      {/* Chat */}
+      {/* Mafia chat — only during mafia night */}
       {chatChannel && (
-        <div className="h-60 border-t border-white/10">
+        <div className="shrink-0 h-44 border-t border-white/10 bg-black/30">
           <Chat channel={chatChannel} roomCode={code} />
         </div>
       )}
+
+      {/* Action overlay */}
+      {showActionOverlay && !isMaster && (
+        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowActionOverlay(false)}
+            aria-label="Zamknij"
+          />
+          <div className="relative w-full max-w-lg mx-4 mb-4 sm:mb-0 max-h-[70dvh] overflow-y-auto animate-popup-in">
+            {isNightPhaseForRole && (
+              <NightActionPicker
+                role={role}
+                players={alivePlayers}
+                onSubmit={handleNightAction}
+                disabled={actionSubmitted}
+                result={nightResult}
+                lastDoctorTarget={lastDoctorTarget}
+              />
+            )}
+            {phase === 'day_vote' && (
+              <VotePanel
+                players={alivePlayers}
+                onVote={handleVote}
+                disabled={voteSubmitted}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Verdict */}
+      {pendingVerdict && (
+        <VerdictReveal
+          verdict={pendingVerdict}
+          autoShow={pendingVerdict.autoShow}
+          onDismiss={() => setPendingVerdict(null)}
+        />
+      )}
+
+      <GameMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        players={players}
+        role={role}
+        roomCode={code}
+        isMaster={isMaster}
+        detectiveHistory={detectiveHistory}
+        lastDoctorTarget={lastDoctorTarget}
+        recentlyEliminatedId={recentlyEliminatedId}
+      />
     </div>
   );
 }
