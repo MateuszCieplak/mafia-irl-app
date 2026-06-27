@@ -73,7 +73,7 @@ export default function MasterControls({ phase, submissions, onAdvance, onEndGam
         disabled={advancing}
         className="btn-primary w-full"
       >
-        {advancing ? 'Przechodzenie…' : label}
+        {advancing ? 'Przechodzenie…' : `Pomiń: ${label}`}
       </button>
 
       {onEndGame && (

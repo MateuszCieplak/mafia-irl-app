@@ -21,7 +21,7 @@ const ACTION_INFO = {
   },
 };
 
-export default function NightActionPicker({ role, players, onSubmit, disabled, result }) {
+export default function NightActionPicker({ role, players, onSubmit, disabled, result, lastDoctorTarget }) {
   const [selectedId, setSelectedId] = useState(null);
   const info = ACTION_INFO[role];
 
@@ -51,6 +51,7 @@ export default function NightActionPicker({ role, players, onSubmit, disabled, r
             selectable
             selectedId={selectedId}
             onSelect={setSelectedId}
+            doctorBlockedId={role === 'doctor' ? lastDoctorTarget : null}
           />
           <button
             onClick={handleConfirm}
