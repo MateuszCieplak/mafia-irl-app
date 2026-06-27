@@ -43,8 +43,18 @@ export function AuthProvider({ children }) {
     router.push('/login');
   }, [router]);
 
+  const refreshUser = useCallback(async () => {
+    if (!pb.authStore.isValid) return;
+    try {
+      const result = await pb.collection('users').authRefresh();
+      setUser(result.record);
+    } catch {
+      /* ignore */
+    }
+  }, [pb]);
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, pb }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, pb, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
