@@ -96,7 +96,7 @@ describe('5. Rozwiązanie nocy i blokady wyeliminowanych', () => {
     clearAssignRolesForTest();
   });
 
-  it('5.3 Wyeliminowany — chat dzienny, głos, akcja nocna odrzucone', async () => {
+  it('5.3 Wyeliminowany — czat dzienny wyłączony; głos i akcja nocna odrzucone', async () => {
     const { masterSocket, sockets, socketById } = await setupLobbyStartedWithPhaseDetective(ctx.url);
 
     await playFullNightFromDetective(masterSocket, socketById, {
@@ -107,7 +107,7 @@ describe('5. Rozwiązanie nocy i blokady wyeliminowanych', () => {
 
     expect(
       (await emitAck(socketById.p05.socket, 'chat_message', { channel: 'day', body: 'x' })).error,
-    ).toBe('eliminated');
+    ).toBe('channel_disabled');
 
     await advancePhase(masterSocket);
     expect((await submitVote(socketById.p05.socket, 'p06')).error).toBe('eliminated');

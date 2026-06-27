@@ -42,7 +42,7 @@ describe('6. Dzień — deliberacja', () => {
     resetInMemoryGameState();
   });
 
-  it('6.1 Żyjący pisać dzień; wyeliminowany nie; master może', async () => {
+  it('6.1 Czat dzienny wyłączony w trakcie gry (tylko lobby + mafia noc)', async () => {
     const { masterSocket, sockets, socketById } = await setupLobbyStartedWithPhaseDetective(ctx.url);
     await playFullNightFromDetective(masterSocket, socketById, {
       det: 'p08',
@@ -51,15 +51,15 @@ describe('6. Dzień — deliberacja', () => {
     });
     await advancePhase(masterSocket);
 
-    expect((await emitAck(socketById.p06.socket, 'chat_message', { channel: 'day', body: 'ok' })).ok).toBe(
-      true,
-    );
+    expect(
+      (await emitAck(socketById.p06.socket, 'chat_message', { channel: 'day', body: 'ok' })).error,
+    ).toBe('channel_disabled');
     expect(
       (await emitAck(socketById.p05.socket, 'chat_message', { channel: 'day', body: 'no' })).error,
-    ).toBe('eliminated');
+    ).toBe('channel_disabled');
 
     const m = await emitAck(masterSocket, 'chat_message', { channel: 'day', body: 'narracja' });
-    expect(m.ok).toBe(true);
+    expect(m.error).toBe('channel_disabled');
 
     masterSocket.disconnect();
     for (const { socket } of sockets) socket.disconnect();
