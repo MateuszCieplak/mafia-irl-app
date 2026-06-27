@@ -109,9 +109,6 @@ export function registerGameHandlers(io, socket, pb) {
       const state = rooms.get(socket.roomId);
       if (!state) return callback?.({ ok: false, error: 'no_room' });
       const result = await processNightAction(io, state, pb, socket.userId, data?.targetId);
-      if (result?.ok) {
-        await tryAutoAdvance(io, state, pb);
-      }
       callback?.(result);
     } catch (err) {
       console.error('[game] night_action error:', err.message);
@@ -124,9 +121,6 @@ export function registerGameHandlers(io, socket, pb) {
       const state = rooms.get(socket.roomId);
       if (!state) return callback?.({ ok: false, error: 'no_room' });
       const result = await processVote(io, state, pb, socket.userId, data?.targetId);
-      if (result?.ok) {
-        await tryAutoAdvance(io, state, pb);
-      }
       callback?.(result);
     } catch (err) {
       console.error('[game] vote error:', err.message);

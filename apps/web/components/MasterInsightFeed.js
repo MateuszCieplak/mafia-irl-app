@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
+
 const KIND_LABELS = {
   roles_assigned: 'Role przydzielone',
   night_detective: 'Detektyw',
@@ -93,23 +95,28 @@ function formatEntry(entry, players) {
 const RESULT_KINDS = new Set(['night_result', 'vote_result']);
 
 export default function MasterInsightFeed({ entries, players }) {
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [entries]);
+
   if (!entries || entries.length === 0) return null;
 
   return (
-    <div className="card space-y-2">
-      <h3 className="font-display font-bold text-sm text-white/50 uppercase tracking-wider">
+    <div className="card flex flex-col min-h-0 h-full">
+      <h3 className="font-display font-bold text-sm text-white/50 uppercase tracking-wider shrink-0 mb-2">
         Podgląd live
       </h3>
-      <div className="max-h-56 overflow-y-auto space-y-1 text-sm">
+      <div className="flex-1 overflow-y-auto space-y-1 text-sm min-h-0">
         {entries.map((entry, i) => {
           const isResult = RESULT_KINDS.has(entry.kind);
-          const isElimination =
-            isResult && (entry.eliminatedId || entry.killed);
+          const isElimination = isResult && (entry.eliminatedId || entry.killed);
 
           return (
             <div
               key={i}
-              className={`flex gap-2 leading-snug rounded px-2 py-1 ${
+              className={`flex gap-2 leading-snug rounded px-2 py-1.5 ${
                 isElimination
                   ? 'bg-blood/15 border border-blood/30'
                   : isResult
@@ -117,19 +124,16 @@ export default function MasterInsightFeed({ entries, players }) {
                   : ''
               }`}
             >
-              <span
-                className={`shrink-0 font-semibold ${KIND_COLORS[entry.kind] || 'text-white/50'}`}
-              >
+              <span className={`shrink-0 font-semibold ${KIND_COLORS[entry.kind] || 'text-white/50'}`}>
                 {KIND_LABELS[entry.kind] || entry.kind}
               </span>
-              <span
-                className={`${isElimination ? 'text-white font-semibold' : 'text-white/70'}`}
-              >
+              <span className={`${isElimination ? 'text-white font-semibold' : 'text-white/70'}`}>
                 {formatEntry(entry, players)}
               </span>
             </div>
           );
         })}
+        <div ref={bottomRef} />
       </div>
     </div>
   );

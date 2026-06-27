@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@/lib/AuthContext';
 import { useSocket } from '@/lib/useSocket';
@@ -28,6 +28,13 @@ const PHASE_FLAVOR = {
   day_resolve: 'Rozstrzygnięcie głosowania…',
 };
 
+const ACTION_WAITING = {
+  night_detective: 'Informacja przekazana masterowi…',
+  night_doctor: 'Ochrona aktywna — czekaj na mastera…',
+  night_mafia: 'Głos oddany — czekaj na konsensus…',
+  day_vote: 'Głos oddany — czekaj na mastera…',
+};
+
 export default function GamePage() {
   const { code } = useParams();
   const { user } = useAuth();
@@ -49,10 +56,12 @@ export default function GamePage() {
   const [phaseDeadline, setPhaseDeadline] = useState(null);
   const [detectiveHistory, setDetectiveHistory] = useState([]);
   const [lastDoctorTarget, setLastDoctorTarget] = useState(null);
-  const [phaseKey, setPhaseKey] = useState(0);
   const [pendingVerdict, setPendingVerdict] = useState(null);
   const [recentlyEliminatedId, setRecentlyEliminatedId] = useState(null);
   const [showActionOverlay, setShowActionOverlay] = useState(false);
+
+  // Avoid showing loader on reconnects after first load
+  const initialLoadDone = useRef(false);
 
   const loadState = useCallback(async () => {
     const res = await emit('get_game_state', {});
@@ -66,13 +75,18 @@ export default function GamePage() {
       setDetectiveHistory(res.your_action_history?.detective || []);
       setLastDoctorTarget(res.lastDoctorTarget ?? null);
     }
+    initialLoadDone.current = true;
     setStateLoaded(true);
   }, [emit, user?.id]);
 
   useEffect(() => {
     if (!connected) return;
 
-    setStateLoaded(false);
+    // Only show loading screen on first connection, not on reconnects
+    if (!initialLoadDone.current) {
+      setStateLoaded(false);
+    }
+
     (async () => {
       await emit('join_room', { code });
       await loadState();
@@ -91,7 +105,6 @@ export default function GamePage() {
         setNightResult(undefined);
         setSubmissions({});
         setShowActionOverlay(false);
-        setPhaseKey((k) => k + 1);
         setPendingVerdict(null);
       }),
       on('night_action_submitted', (data) => {
@@ -238,6 +251,15 @@ export default function GamePage() {
     ((isNightPhaseForRole && !actionSubmitted) ||
       (phase === 'day_vote' && !voteSubmitted));
 
+  const actionDone =
+    !isMaster &&
+    ((isNightPhaseForRole && actionSubmitted) ||
+      (phase === 'day_vote' && voteSubmitted));
+
+  const waitingLabel = actionDone
+    ? (ACTION_WAITING[phase] || 'Czekaj na mastera…')
+    : null;
+
   useEffect(() => {
     if (needsAction) setShowActionOverlay(true);
   }, [needsAction, phase]);
@@ -252,7 +274,7 @@ export default function GamePage() {
 
   if (gameOver) {
     return (
-      <div className="h-dvh flex flex-col items-center justify-center px-6 gap-6 bg-night">
+      <div className="h-dvh flex flex-col items-center justify-center px-6 gap-6 bg-night overflow-y-auto py-8">
         <h1 className="font-display text-4xl font-bold animate-reveal-in">
           {gameOver.winner === 'mafia' ? 'Mafia wygrywa!' : 'Miasto wygrywa!'}
         </h1>
@@ -265,53 +287,99 @@ export default function GamePage() {
   return (
     <div className={`h-dvh overflow-hidden flex flex-col ${bgClass}`}>
       {/* Top — logo M */}
-      <header className="shrink-0 flex justify-center pt-6 pb-2">
+      <header className="shrink-0 flex justify-center pt-5 pb-1">
         <MafiaLogo onClick={() => setMenuOpen(true)} />
       </header>
 
-      {/* Center — role or master panel hint */}
-      <main
-        key={phaseKey}
-        className="flex-1 flex flex-col items-center justify-center px-6 animate-phase-fade min-h-0"
-      >
+      {/* Center */}
+      <main className="flex-1 min-h-0 overflow-hidden">
         {isMaster ? (
-          <div className="w-full max-w-md space-y-3 overflow-y-auto max-h-full py-2">
-            <MasterControls
-              phase={phase}
-              submissions={submissions}
-              onAdvance={handleAdvancePhase}
-              onEndGame={handleEndGame}
-            />
-            <MasterInsightFeed entries={insightFeed} players={players} />
-            <div className="card">
-              <h3 className="font-display text-sm font-bold text-white/50 mb-2 uppercase tracking-wider">
-                Gracze
-              </h3>
-              <PlayerList players={players} showRoles gridLayout />
+          /* ── Master: two-column layout ── */
+          <div className="h-full grid grid-cols-2 gap-3 p-3 overflow-hidden">
+            {/* Left: controls + insight feed */}
+            <div className="flex flex-col gap-3 min-h-0 overflow-hidden">
+              <div className="shrink-0">
+                <MasterControls
+                  phase={phase}
+                  submissions={submissions}
+                  onAdvance={handleAdvancePhase}
+                  onEndGame={handleEndGame}
+                />
+              </div>
+              {/* Insight feed grows to fill remaining space */}
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <MasterInsightFeed entries={insightFeed} players={players} />
+              </div>
+            </div>
+
+            {/* Right: player list with roles */}
+            <div className="flex flex-col gap-2 min-h-0 overflow-hidden">
+              <div className="flex items-center gap-2 shrink-0">
+                <h3 className="font-display text-sm font-bold text-white/50 uppercase tracking-wider">
+                  Gracze
+                </h3>
+                <span className="text-[10px] text-white/30">
+                  {players.filter((p) => !p.eliminated).length} żywych / {players.length}
+                </span>
+              </div>
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <PlayerList players={players} showRoles gridLayout />
+              </div>
             </div>
           </div>
         ) : (
-          <>
-            <p className="text-white/40 text-xs uppercase tracking-[0.25em] mb-2">Twoja rola</p>
+          /* ── Player: role center + status ── */
+          <div className="h-full flex flex-col items-center justify-center px-6 gap-4">
+            <p className="text-white/40 text-xs uppercase tracking-[0.25em]">Twoja rola</p>
             <h1
-              className={`font-display text-5xl sm:text-6xl font-bold capitalize animate-role-reveal ${roleColorClass}`}
+              className={`font-display text-5xl sm:text-6xl font-bold capitalize ${roleColorClass}`}
             >
               {roleLabel}
             </h1>
+
+            {/* Waiting loader after action */}
+            {actionDone && waitingLabel && (
+              <div className="flex flex-col items-center gap-3 mt-2">
+                <div className="flex gap-1.5">
+                  {[0, 1, 2].map((i) => (
+                    <span
+                      key={i}
+                      className="w-2 h-2 rounded-full bg-white/40 animate-pulse"
+                      style={{ animationDelay: `${i * 0.2}s` }}
+                    />
+                  ))}
+                </div>
+                <p className="text-white/50 text-sm text-center">{waitingLabel}</p>
+                {/* Detective result if available */}
+                {role === 'detective' && nightResult !== undefined && (
+                  <div
+                    className={`rounded-xl px-4 py-2 text-sm font-semibold ${
+                      nightResult?.is_mafia
+                        ? 'bg-red-900/30 text-role-mafia'
+                        : 'bg-green-900/30 text-role-detective'
+                    }`}
+                  >
+                    {nightResult?.is_mafia ? 'To jest Mafia!' : 'To nie jest Mafia.'}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Action button when player hasn't acted yet */}
             {needsAction && !showActionOverlay && (
               <button
                 type="button"
                 onClick={() => setShowActionOverlay(true)}
-                className="btn-primary mt-6 animate-phase-fade"
+                className="btn-primary mt-4"
               >
                 {isNightPhaseForRole ? 'Wykonaj akcję' : 'Głosuj'}
               </button>
             )}
-          </>
+          </div>
         )}
       </main>
 
-      {/* Bottom — turn info bar */}
+      {/* Bottom — turn info bar (always visible) */}
       <footer className="shrink-0 border-t border-white/10 bg-black/40 backdrop-blur-md px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -324,7 +392,7 @@ export default function GamePage() {
         </div>
       </footer>
 
-      {/* Mafia chat — only during mafia night */}
+      {/* Mafia chat */}
       {chatChannel && (
         <div className="shrink-0 h-44 border-t border-white/10 bg-black/30">
           <Chat channel={chatChannel} roomCode={code} />
