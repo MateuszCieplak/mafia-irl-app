@@ -7,6 +7,7 @@ import { useSocket } from '@/lib/useSocket';
 import PlayerList from '@/components/PlayerList';
 import Chat from '@/components/Chat';
 import RoomSettingsPanel from '@/components/RoomSettingsPanel';
+import RoleAssignmentPanel from '@/components/RoleAssignmentPanel';
 
 export default function RoomPage() {
   const { code } = useParams();
@@ -21,6 +22,7 @@ export default function RoomPage() {
   const [addingBot, setAddingBot] = useState(false);
   const [roomSettings, setRoomSettings] = useState(null);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [roleAssignments, setRoleAssignments] = useState({});
 
   const minPlayers = 4;
   const isMaster = useMemo(
@@ -86,7 +88,11 @@ export default function RoomPage() {
   }, [joined, connected, refreshOnline]);
 
   async function handleStartGame() {
-    const res = await emit('start_game');
+    // Strip empty strings (= "random") from assignments before sending
+    const overrides = Object.fromEntries(
+      Object.entries(roleAssignments).filter(([, v]) => v),
+    );
+    const res = await emit('start_game', { roleOverrides: overrides });
     if (res?.ok) {
       // Przekierowanie nastąpi przez event 'game_started' wysłany przez serwer.
       // Jako fallback przekierowujemy tu, gdyby event nie dotarł (np. race condition).
@@ -280,6 +286,16 @@ export default function RoomPage() {
             settings={roomSettings}
             onSave={handleSaveSettings}
             saving={savingSettings}
+          />
+        </div>
+      )}
+
+      {isMaster && players.filter((p) => !p.isMaster).length > 0 && (
+        <div className="px-4 py-3 border-b border-white/10">
+          <RoleAssignmentPanel
+            players={players.filter((p) => !p.isMaster)}
+            assignments={roleAssignments}
+            onChange={setRoleAssignments}
           />
         </div>
       )}

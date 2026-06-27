@@ -11,7 +11,7 @@ import {
 } from '../game/phaseFlow.js';
 
 export function registerGameHandlers(io, socket, pb) {
-  socket.on('start_game', async (_, callback) => {
+  socket.on('start_game', async (data, callback) => {
     const state = rooms.get(socket.roomId);
     if (!state) return callback?.({ ok: false, error: 'no_room' });
     if (socket.userId !== state.hostId) return callback?.({ ok: false, error: 'not_master' });
@@ -27,7 +27,8 @@ export function registerGameHandlers(io, socket, pb) {
     }
 
     const participantIds = Array.from(state.players.keys()).filter((id) => id !== state.hostId);
-    const roleMap = assignRoles(participantIds);
+    const roleOverrides = (data && typeof data === 'object') ? (data.roleOverrides || {}) : {};
+    const roleMap = assignRoles(participantIds, roleOverrides);
 
     for (const [userId, role] of Object.entries(roleMap)) {
       const rpRecords = await pb.collection('room_players').getList(1, 1, {
