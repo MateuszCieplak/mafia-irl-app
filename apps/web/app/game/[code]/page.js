@@ -60,6 +60,8 @@ export default function GamePage() {
   const [pendingVerdict, setPendingVerdict] = useState(null);
   const [recentlyEliminatedId, setRecentlyEliminatedId] = useState(null);
   const [showActionOverlay, setShowActionOverlay] = useState(false);
+  const [actionError, setActionError] = useState(null);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   // Avoid showing loader on reconnects after first load
   const initialLoadDone = useRef(false);
@@ -190,7 +192,23 @@ export default function GamePage() {
     return () => offs.forEach((off) => off?.());
   }, [connected, code, emit, on, loadState]);
 
+  const ACTION_ERRORS = {
+    wrong_phase: 'Zła faza gry — spróbuj ponownie.',
+    already_acted: 'Już wykonałeś(aś) akcję w tej turze.',
+    eliminated: 'Jesteś wyeliminowany(a).',
+    invalid_target: 'Nieprawidłowy cel.',
+    target_eliminated: 'Ten gracz jest już wyeliminowany.',
+    cannot_self_protect: 'Nie możesz chronić siebie.',
+    repeat_protect_forbidden: 'Nie możesz chronić tej samej osoby kolejną noc.',
+    master_cannot_act: 'Master nie może wykonywać akcji.',
+    no_role: 'Nie masz przypisanej roli.',
+    no_action: 'Twoja rola nie ma akcji nocnych.',
+    not_connected: 'Brak połączenia — odśwież stronę.',
+    timeout: 'Serwer nie odpowiedział. Spróbuj ponownie.',
+  };
+
   async function handleNightAction(targetId) {
+    setActionError(null);
     const res = await emit('night_action', { targetId });
     if (res?.ok) {
       setActionSubmitted(true);
@@ -198,11 +216,17 @@ export default function GamePage() {
         setNightResult(res.result);
         setDetectiveHistory((prev) => [...prev, { targetId, result: res.result }]);
       }
-      setShowActionOverlay(false);
+      // Keep overlay open for detective (to show result), close for others
+      if (role !== 'detective') {
+        setShowActionOverlay(false);
+      }
+    } else {
+      setActionError(ACTION_ERRORS[res?.error] || `Błąd: ${res?.error || 'brak połączenia'}`);
     }
   }
 
   async function handleVote(targetId) {
+    setActionError(null);
     const res = await emit('vote', { targetId });
     if (res?.ok) {
       setVoteSubmitted(true);
@@ -216,7 +240,7 @@ export default function GamePage() {
         not_connected: 'Brak połączenia z serwerem.',
         timeout: 'Serwer nie odpowiedział — spróbuj ponownie.',
       };
-      alert(msgs[res.error] || `Błąd głosowania: ${res.error || 'nieznany'}`);
+      setActionError(msgs[res?.error] || `Błąd głosowania: ${res?.error || 'nieznany'}`);
     }
   }
 
@@ -326,9 +350,24 @@ export default function GamePage() {
 
   return (
     <div className={`h-dvh overflow-hidden flex flex-col ${bgClass}`}>
-      {/* Top — logo M */}
-      <header className="shrink-0 flex justify-center pt-5 pb-1">
+      {/* Top — logo M + leave button */}
+      <header className="shrink-0 flex items-center justify-between px-4 pt-4 pb-1">
+        <button
+          type="button"
+          onClick={() => setShowLeaveConfirm(true)}
+          className="text-white/30 hover:text-white/70 transition-colors text-xs font-medium flex items-center gap-1"
+          aria-label="Wyjdź z gry"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+          Wyjdź
+        </button>
+
         <MafiaLogo onClick={() => setMenuOpen(true)} />
+
+        {/* Spacer to keep logo centered */}
+        <div className="w-[56px]" />
       </header>
 
       {/* Center */}
@@ -445,10 +484,16 @@ export default function GamePage() {
           <button
             type="button"
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setShowActionOverlay(false)}
+            onClick={() => { setShowActionOverlay(false); setActionError(null); }}
             aria-label="Zamknij"
           />
-          <div className="relative w-full max-w-lg mx-4 mb-4 sm:mb-0 max-h-[70dvh] overflow-y-auto animate-popup-in">
+          <div className="relative w-full max-w-lg mx-4 mb-4 sm:mb-0 max-h-[70dvh] overflow-y-auto animate-popup-in space-y-2">
+            {/* Error banner */}
+            {actionError && (
+              <div className="card bg-red-900/40 border border-red-500/30 text-red-200 text-sm py-2 px-3">
+                ⚠ {actionError}
+              </div>
+            )}
             {isNightPhaseForRole && (
               <NightActionPicker
                 role={role}
@@ -490,6 +535,51 @@ export default function GamePage() {
         lastDoctorTarget={lastDoctorTarget}
         recentlyEliminatedId={recentlyEliminatedId}
       />
+
+      {/* Leave game confirmation */}
+      {showLeaveConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowLeaveConfirm(false)}
+            aria-label="Anuluj"
+          />
+          <div className="relative card max-w-xs w-full space-y-4 animate-popup-in text-center">
+            <h3 className="font-display text-lg font-bold">Opuścić grę?</h3>
+            <p className="text-white/50 text-sm">
+              {isMaster
+                ? 'Jako master możesz wrócić do pokoju i ponownie uruchomić grę, lub wyjść do lobby.'
+                : 'Twoja rola zostanie ujawniona masterowi. Możesz dołączyć ponownie tym samym kodem.'}
+            </p>
+            <div className="flex flex-col gap-2">
+              {isMaster && (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/room/${code}`)}
+                  className="btn-primary w-full"
+                >
+                  Wróć do pokoju
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => router.push('/lobby')}
+                className="w-full px-4 py-2 rounded-lg border border-white/20 text-white/70 hover:text-white hover:border-white/40 text-sm font-semibold transition-colors"
+              >
+                Wyjdź do lobby
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowLeaveConfirm(false)}
+                className="text-white/30 hover:text-white/60 text-sm py-1 transition-colors"
+              >
+                Anuluj
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
