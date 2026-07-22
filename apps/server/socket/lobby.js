@@ -81,6 +81,7 @@ export function registerLobbyHandlers(io, socket, pb) {
 
   socket.on('join_room', async (data, callback) => {
     try {
+      await ensureAdminAuth();
       const { code } = data;
       // requestKey: null wyłącza auto-anulowanie PocketBase SDK — bez tego
       // równoległe join_room (np. podwójny render w dev, szybkie reconnecty)
@@ -251,6 +252,7 @@ export function registerLobbyHandlers(io, socket, pb) {
         }
       }
 
+      await ensureAdminAuth();
       await pb.collection('rooms').update(state.id, { settings: nextSettings });
       state.settings = nextSettings;
 
@@ -280,6 +282,7 @@ export function registerLobbyHandlers(io, socket, pb) {
       state.players.delete(targetUserId);
       presenceClearRoom(targetUserId);
 
+      await ensureAdminAuth();
       const rp = await pb.collection('room_players').getList(1, 1, {
         filter: `room_id = "${state.id}" && user_id = "${targetUserId}"`,
         requestKey: null,
