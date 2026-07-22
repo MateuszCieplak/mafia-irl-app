@@ -6,12 +6,13 @@ export function roomEventMeta(state) {
   };
 }
 
-export function notifyMasterSubmission(io, state, role) {
+export function notifyMasterSubmission(io, state, role, details = {}) {
   const masterInfo = state.players.get(state.hostId);
   if (masterInfo?.socketId) {
     io.to(masterInfo.socketId).emit('night_action_submitted', {
       role,
       submitted: true,
+      ...details,
       ...roomEventMeta(state),
     });
   }

@@ -101,7 +101,7 @@ export async function processNightAction(io, state, pb, actorId, targetId) {
     }
 
     state.nightActions.detective = { actorId, targetId };
-    notifyMasterSubmission(io, state, 'detective');
+    notifyMasterSubmission(io, state, 'detective', { actorId, targetId, isMafia });
     emitMasterInsight(io, state, {
       kind: 'night_detective',
       actorId,
@@ -130,7 +130,7 @@ export async function processNightAction(io, state, pb, actorId, targetId) {
     }
 
     state.nightActions.doctor = { actorId, targetId };
-    notifyMasterSubmission(io, state, 'doctor');
+    notifyMasterSubmission(io, state, 'doctor', { actorId, targetId });
     emitMasterInsight(io, state, {
       kind: 'night_doctor',
       actorId,
@@ -176,7 +176,10 @@ export async function processNightAction(io, state, pb, actorId, targetId) {
         });
       }
       state.nightActions.mafia = { targetId: mafiaTarget };
-      notifyMasterSubmission(io, state, 'mafia');
+      notifyMasterSubmission(io, state, 'mafia', {
+        targetId: mafiaTarget,
+        votes: Object.fromEntries(state.mafiaTargets),
+      });
     }
 
     const mafiaVotes = Object.fromEntries(state.mafiaTargets);

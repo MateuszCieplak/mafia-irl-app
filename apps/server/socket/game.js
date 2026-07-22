@@ -175,6 +175,9 @@ export function registerGameHandlers(io, socket, pb) {
 
     const pbBase = process.env.POCKETBASE_URL || 'http://127.0.0.1:8090';
     const isMaster = socket.userId === state.hostId;
+    const isFinished = state.status === 'finished';
+    // Po zakończeniu gry role są ujawnione wszystkim, nie tylko masterowi.
+    const canSeeRoles = isMaster || isFinished;
 
     const pbPlayerIds = new Set(players.map((p) => p.user_id));
     const allPlayers = [
@@ -193,7 +196,7 @@ export function registerGameHandlers(io, socket, pb) {
           eliminated: !!p.eliminated_at,
           seatOrder: p.seat_order,
           avatarUrl,
-          role: isMaster ? state.roles?.[p.user_id] || p.role : undefined,
+          role: canSeeRoles ? state.roles?.[p.user_id] || p.role : undefined,
         };
       }),
       ...Array.from(state.players.entries())
@@ -206,7 +209,7 @@ export function registerGameHandlers(io, socket, pb) {
           eliminated: Boolean(state.eliminatedBots?.has(id)),
           seatOrder: 999,
           avatarUrl: null,
-          role: isMaster ? state.roles?.[id] : undefined,
+          role: canSeeRoles ? state.roles?.[id] : undefined,
         })),
     ];
 
@@ -215,13 +218,14 @@ export function registerGameHandlers(io, socket, pb) {
       phase: state.phase,
       round: state.round,
       status: state.status,
+      winner: isFinished ? state.winner ?? null : undefined,
       role: state.roles?.[socket.userId] || null,
       isMaster,
       settings: state.settings,
       your_action_history: { detective: detectiveHistory, doctor: doctorHistory },
       lastDoctorTarget: state.previousDoctorProtectTarget ?? null,
       players: allPlayers,
-      roles: isMaster ? state.roles : undefined,
+      roles: canSeeRoles ? state.roles : undefined,
       ...phaseMeta(state),
     });
   });

@@ -175,6 +175,7 @@ async function emitNightActionPrompts(io, state, pb) {
 async function emitGameOver(io, state, winner, pb, callback) {
   await pb.collection('rooms').update(state.id, { status: 'finished' });
   state.status = 'finished';
+  state.winner = winner;
   clearPhaseTimer(state);
 
   const meta = phaseMeta(state);
