@@ -23,6 +23,7 @@ export default function RoomPage() {
   const [roomSettings, setRoomSettings] = useState(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [roleAssignments, setRoleAssignments] = useState({});
+  const [roomStatus, setRoomStatus] = useState(null);
 
   const minPlayers = 4;
   const isMaster = useMemo(
@@ -51,6 +52,7 @@ export default function RoomPage() {
 
     emit('get_game_state', {}).then((res) => {
       if (res?.settings) setRoomSettings(res.settings);
+      if (res?.status) setRoomStatus(res.status);
     });
 
     const syncPlayers = (list) => setPlayers(list || []);
@@ -193,6 +195,29 @@ export default function RoomPage() {
     return (
       <div className="flex-1 flex items-center justify-center text-white/40">
         Dołączanie do pokoju...
+      </div>
+    );
+  }
+
+  // Gracz wrócił tu przez przypadek (np. przycisk "wstecz" w przeglądarce),
+  // a gra wciąż się toczy — pokazujemy jasny komunikat i przycisk powrotu do rozgrywki
+  // zamiast pustego widoku lobby.
+  if (!isMaster && roomStatus === 'in_progress') {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center text-center px-6 gap-4">
+        <span className="text-4xl">🎭</span>
+        <h2 className="font-display text-xl font-bold">Gra wciąż się toczy!</h2>
+        <p className="text-white/50 text-sm max-w-xs">
+          Wyszedłeś(aś) z ekranu rozgrywki, ale gra jeszcze nie skończyła się. Dołącz z powrotem, aby nie
+          przegapić kolejnych faz.
+        </p>
+        <button
+          type="button"
+          onClick={() => router.push(`/game/${code}`)}
+          className="btn-primary"
+        >
+          Wróć do rozgrywki
+        </button>
       </div>
     );
   }

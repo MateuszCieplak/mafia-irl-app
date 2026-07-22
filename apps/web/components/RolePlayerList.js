@@ -66,7 +66,14 @@ export default function RolePlayerList({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="space-y-3">
+      {role === 'detective' && detectiveHistory.length > 0 && (
+        <p className="text-[12px] text-white/40 leading-relaxed">
+          🔍 Sprawdziłeś(aś) {detectiveHistory.length}{' '}
+          {detectiveHistory.length === 1 ? 'osobę' : 'osoby'} — wynik widoczny przy graczu.
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-2">
       {players.map((player) => {
         const isEliminated = player.eliminated;
         const justKilled = player.id === recentlyEliminatedId;
@@ -107,11 +114,13 @@ export default function RolePlayerList({
 
             {role === 'detective' && investigated && (
               <span
-                className={`text-[12px] font-semibold uppercase tracking-wide ${
-                  isMafia ? 'text-role-mafia' : 'text-white/35'
+                className={`text-[12px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full ${
+                  isMafia
+                    ? 'bg-red-500/20 text-role-mafia'
+                    : 'bg-emerald-500/20 text-role-detective'
                 }`}
               >
-                {isMafia ? 'Mafia' : 'NoMafia'}
+                🔍 {isMafia ? 'Mafia' : 'Nie mafia'}
               </span>
             )}
 
@@ -135,6 +144,7 @@ export default function RolePlayerList({
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

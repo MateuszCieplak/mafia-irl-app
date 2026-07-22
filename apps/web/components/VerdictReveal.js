@@ -43,7 +43,8 @@ export default function VerdictReveal({ verdict, onDismiss, autoShow = false }) 
 
   const isElimination = verdict.type === 'elimination';
   const title =
-    verdict.source === 'night'
+    verdict.title ??
+    (verdict.source === 'night'
       ? isElimination
         ? 'Tej nocy zginął(a)'
         : 'Spokojna noc'
@@ -51,7 +52,7 @@ export default function VerdictReveal({ verdict, onDismiss, autoShow = false }) 
       ? 'Wioska wyrzuciła'
       : verdict.outcome === 'tie'
       ? 'Remis'
-      : 'Głosowanie';
+      : 'Głosowanie');
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">

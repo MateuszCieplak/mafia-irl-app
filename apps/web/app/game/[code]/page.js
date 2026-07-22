@@ -129,8 +129,10 @@ export default function GamePage() {
             setPendingVerdict({
               type: 'elimination',
               source: 'night',
+              title: 'Rozstrzygnięcie nocy',
               playerName: victim?.username || data.eliminatedPlayerId,
               message: `Tej nocy zginął(a): ${victim?.username || data.eliminatedPlayerId}`,
+              autoShow: true,
             });
             return updated;
           });
@@ -138,7 +140,9 @@ export default function GamePage() {
           setPendingVerdict({
             type: 'safe',
             source: 'night',
+            title: 'Rozstrzygnięcie nocy',
             message: 'Noc spokojna — nikt nie zginął',
+            autoShow: true,
           });
         }
       }),
@@ -555,8 +559,8 @@ export default function GamePage() {
         </div>
       )}
 
-      {/* Verdict */}
-      {pendingVerdict && (
+      {/* Verdict — master ma już te informacje w panelu insightów, nie blokujemy mu widoku popupem */}
+      {pendingVerdict && !isMaster && (
         <VerdictReveal
           verdict={pendingVerdict}
           autoShow={pendingVerdict.autoShow}

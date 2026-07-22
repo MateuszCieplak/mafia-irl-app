@@ -44,6 +44,8 @@ export function phaseDurationMs(state, phase) {
       return sec('phase_timer_deliberation_sec', 300) * 1000;
     case 'day_vote':
       return sec('phase_timer_vote_sec', 60) * 1000;
+    case 'night_resolve':
+      return sec('phase_timer_resolve_sec', 10) * 1000;
     default:
       return null;
   }
@@ -192,40 +194,6 @@ export async function advancePhaseInternal(io, state, pb, callback) {
   const currentIdx = state.phase ? PHASES.indexOf(state.phase) : -1;
   let nextIdx = currentIdx + 1;
 
-  if (state.phase === 'night_resolve') {
-    const result = await resolveNight(state, pb);
-    state.previousDoctorProtectTarget = state.nightActions.doctor?.targetId ?? null;
-
-    const pubMeta = phaseMeta(state);
-    io.to(`room:${state.code}`).emit('night_resolved', {
-      eliminatedPlayerId: result.eliminatedId,
-      survivedNight: result.eliminatedId === null,
-      ...pubMeta,
-    });
-
-    const killedName = result.killed
-      ? (state.players.get(result.killed)?.username || result.killed)
-      : null;
-    const protectedName = result.protected
-      ? (state.players.get(result.protected)?.username || result.protected)
-      : null;
-    emitMasterInsight(io, state, {
-      kind: 'night_result',
-      eliminatedId: result.eliminatedId,
-      killedName,
-      protectedName,
-      protection_was_effective: result.protection_was_effective,
-    });
-
-    const win = await checkWinCondition(state, pb);
-    if (win) {
-      return emitGameOver(io, state, win, pb, callback);
-    }
-
-    state.nightActions = {};
-    state.mafiaTargets = new Map();
-  }
-
   if (state.phase === 'day_resolve') {
     const result = await resolveVotes(state, pb);
     const pubMeta = phaseMeta(state);
@@ -281,14 +249,50 @@ export async function advancePhaseInternal(io, state, pb, callback) {
     ...meta,
   });
 
+  // Noc jest rozstrzygana natychmiast po wejściu w night_resolve, tak by gracze
+  // od razu zobaczyli popup z werdyktem przez cały czas trwania tej fazy (10s).
+  if (nextPhase === 'night_resolve') {
+    const result = await resolveNight(state, pb);
+    state.previousDoctorProtectTarget = state.nightActions.doctor?.targetId ?? null;
+
+    const pubMeta = phaseMeta(state);
+    io.to(`room:${state.code}`).emit('night_resolved', {
+      eliminatedPlayerId: result.eliminatedId,
+      survivedNight: result.eliminatedId === null,
+      ...pubMeta,
+    });
+
+    const killedName = result.killed
+      ? (state.players.get(result.killed)?.username || result.killed)
+      : null;
+    const protectedName = result.protected
+      ? (state.players.get(result.protected)?.username || result.protected)
+      : null;
+    emitMasterInsight(io, state, {
+      kind: 'night_result',
+      eliminatedId: result.eliminatedId,
+      killedName,
+      protectedName,
+      protection_was_effective: result.protection_was_effective,
+    });
+
+    const win = await checkWinCondition(state, pb);
+    if (win) {
+      return emitGameOver(io, state, win, pb, callback);
+    }
+
+    state.nightActions = {};
+    state.mafiaTargets = new Map();
+  }
+
   await emitNightActionPrompts(io, state, pb);
   scheduleBotPhaseActions(io, state, pb, nextPhase);
 
   schedulePhaseTimer(io, state, pb, nextPhase, advancePhaseInternal);
 
-  // Auto-advance resolve phases after delay
-  if (autoAdvanceEnabled() && (nextPhase === 'night_resolve' || nextPhase === 'day_resolve')) {
-    const delay = RESOLVE_DELAY_MS;
+  // Auto-advance day_resolve phase after a short delay (night_resolve now uses
+  // the standard phase timer above, with its own 10s duration).
+  if (autoAdvanceEnabled() && nextPhase === 'day_resolve') {
     state.resolveTimer = setTimeout(async () => {
       if (state.status !== 'in_progress') return;
       if (state.phase !== nextPhase) return;
