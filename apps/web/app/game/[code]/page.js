@@ -77,6 +77,10 @@ export default function GamePage() {
       setPhaseDeadline(res.phaseDeadline ?? null);
       setDetectiveHistory(res.your_action_history?.detective || []);
       setLastDoctorTarget(res.lastDoctorTarget ?? null);
+      // Gra już zakończona (np. odświeżenie strony po "Zakończ grę") — pokaż ekran końca gry.
+      if (res.status === 'finished') {
+        setGameOver({ winner: res.winner ?? null, roles: res.roles });
+      }
     }
     initialLoadDone.current = true;
     setStateLoaded(true);
@@ -111,7 +115,7 @@ export default function GamePage() {
         setPendingVerdict(null);
       }),
       on('night_action_submitted', (data) => {
-        setSubmissions((prev) => ({ ...prev, [data.role]: data.submitted }));
+        setSubmissions((prev) => ({ ...prev, [data.role]: data }));
       }),
       on('night_resolved', (data) => {
         if (data.eliminatedPlayerId) {
@@ -271,13 +275,18 @@ export default function GamePage() {
   const roleColorClass = ROLE_COLORS[role] || 'text-white';
   const roleLabel = isMaster ? 'Master' : ROLE_LABELS[role] || role;
 
+  const me = players.find((p) => p.id === user?.id);
+  const isEliminated = Boolean(me?.eliminated);
+
   const needsAction =
     !isMaster &&
+    !isEliminated &&
     ((isNightPhaseForRole && !actionSubmitted) ||
       (phase === 'day_vote' && !voteSubmitted));
 
   const actionDone =
     !isMaster &&
+    !isEliminated &&
     ((isNightPhaseForRole && actionSubmitted) ||
       (phase === 'day_vote' && voteSubmitted));
 
@@ -289,6 +298,11 @@ export default function GamePage() {
     if (needsAction) setShowActionOverlay(true);
   }, [needsAction, phase]);
 
+  // Wyeliminowany gracz nie powinien widzieć kokpitu akcji/głosowania.
+  useEffect(() => {
+    if (isEliminated) setShowActionOverlay(false);
+  }, [isEliminated]);
+
   if (!stateLoaded) {
     return (
       <div className="flex-1 flex items-center justify-center bg-night">
@@ -299,24 +313,38 @@ export default function GamePage() {
 
   if (gameOver) {
     const mafiaWon = gameOver.winner === 'mafia';
+    const townWon = gameOver.winner === 'town';
+    const endedByMaster = !mafiaWon && !townWon;
+    const bgClassOver = mafiaWon
+      ? 'bg-role-mafia'
+      : townWon
+      ? 'bg-role-detective'
+      : 'bg-night';
+    const titleClassOver = mafiaWon
+      ? 'text-role-mafia'
+      : townWon
+      ? 'text-role-detective'
+      : 'text-white';
+    const titleTextOver = mafiaWon
+      ? 'Mafia wygrywa!'
+      : townWon
+      ? 'Miasto wygrywa!'
+      : 'Gra zakończona';
+
     return (
       <div
-        className={`h-dvh flex flex-col items-center justify-center px-6 gap-5 overflow-y-auto py-10 ${
-          mafiaWon ? 'bg-role-mafia' : 'bg-role-detective'
-        }`}
+        className={`h-dvh flex flex-col items-center justify-center px-6 gap-5 overflow-y-auto py-10 ${bgClassOver}`}
       >
         {/* Winner banner */}
         <div className="text-center animate-reveal-in">
           <p className="text-xs uppercase tracking-[0.3em] text-white/40 mb-2">Koniec gry</p>
-          <h1
-            className={`font-display text-5xl font-bold ${
-              mafiaWon ? 'text-role-mafia' : 'text-role-detective'
-            }`}
-          >
-            {mafiaWon ? 'Mafia wygrywa!' : 'Miasto wygrywa!'}
+          <h1 className={`font-display text-5xl font-bold ${titleClassOver}`}>
+            {titleTextOver}
           </h1>
           <p className="text-white/40 text-sm mt-2">
-            Runda {round} · wszystkie role ujawnione
+            {endedByMaster
+              ? `Master zakończył rozgrywkę w rundzie ${round} · wszystkie role ujawnione`
+              : `Runda ${round} · wszystkie role ujawnione`}
           </p>
         </div>
 
@@ -381,6 +409,7 @@ export default function GamePage() {
                 <MasterControls
                   phase={phase}
                   submissions={submissions}
+                  players={players}
                   onAdvance={handleAdvancePhase}
                   onEndGame={handleEndGame}
                 />
@@ -397,7 +426,7 @@ export default function GamePage() {
                 <h3 className="font-display text-sm font-bold text-white/50 uppercase tracking-wider">
                   Gracze
                 </h3>
-                <span className="text-[10px] text-white/30">
+                <span className="text-[12px] text-white/30">
                   {players.filter((p) => !p.eliminated).length} żywych / {players.length}
                 </span>
               </div>
@@ -416,8 +445,19 @@ export default function GamePage() {
               {roleLabel}
             </h1>
 
+            {/* Wyeliminowany gracz — komunikat zamiast kokpitu akcji */}
+            {isEliminated && (
+              <div className="flex flex-col items-center gap-2 mt-2">
+                <span className="text-3xl">💀</span>
+                <p className="text-white/60 text-sm font-semibold">Zostałeś(aś) wyeliminowany(a)</p>
+                <p className="text-white/35 text-xs text-center max-w-xs">
+                  Możesz obserwować dalszy przebieg gry, ale nie bierzesz już w niej udziału.
+                </p>
+              </div>
+            )}
+
             {/* Waiting loader after action */}
-            {actionDone && waitingLabel && (
+            {!isEliminated && actionDone && waitingLabel && (
               <div className="flex flex-col items-center gap-3 mt-2">
                 <div className="flex gap-1.5">
                   {[0, 1, 2].map((i) => (
@@ -445,7 +485,7 @@ export default function GamePage() {
             )}
 
             {/* Action button when player hasn't acted yet */}
-            {needsAction && !showActionOverlay && (
+            {!isEliminated && needsAction && !showActionOverlay && (
               <button
                 type="button"
                 onClick={() => setShowActionOverlay(true)}
@@ -479,7 +519,7 @@ export default function GamePage() {
       )}
 
       {/* Action overlay */}
-      {showActionOverlay && !isMaster && (
+      {showActionOverlay && !isMaster && !isEliminated && (
         <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
           <button
             type="button"

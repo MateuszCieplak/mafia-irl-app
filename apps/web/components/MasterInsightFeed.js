@@ -101,13 +101,20 @@ export default function MasterInsightFeed({ entries, players }) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [entries]);
 
-  if (!entries || entries.length === 0) return null;
+  const isEmpty = !entries || entries.length === 0;
 
   return (
     <div className="card flex flex-col min-h-0 h-full">
       <h3 className="font-display font-bold text-sm text-white/50 uppercase tracking-wider shrink-0 mb-2">
         Podgląd live
       </h3>
+      {isEmpty ? (
+        <div className="flex-1 flex items-center justify-center min-h-0">
+          <p className="text-white/30 text-sm text-center px-4">
+            Tu zobaczysz na żywo ruchy graczy (sprawdzenia detektywa, ochronę lekarza, głosy mafii i głosowanie dzienne).
+          </p>
+        </div>
+      ) : (
       <div className="flex-1 overflow-y-auto space-y-1 text-sm min-h-0">
         {entries.map((entry, i) => {
           const isResult = RESULT_KINDS.has(entry.kind);
@@ -135,6 +142,7 @@ export default function MasterInsightFeed({ entries, players }) {
         })}
         <div ref={bottomRef} />
       </div>
+      )}
     </div>
   );
 }

@@ -24,7 +24,31 @@ const PHASE_QUOTES = {
   day_resolve: { icon: '⚖️', text: 'Rozstrzygnięcie głosowania' },
 };
 
-export default function MasterControls({ phase, submissions, onAdvance, onEndGame }) {
+const ROLE_LABELS_PL = { detective: 'Detektyw', doctor: 'Lekarz', mafia: 'Mafia' };
+
+function playerName(id, players) {
+  if (!id) return '—';
+  const p = players?.find((pl) => pl.id === id);
+  return p?.username || id;
+}
+
+function submissionDetail(role, data, players) {
+  if (!data || !data.submitted) return null;
+  if (role === 'detective') {
+    const target = playerName(data.targetId, players);
+    const result = data.isMafia ? 'MAFIA' : 'nie mafia';
+    return `sprawdził(a) ${target} → ${result}`;
+  }
+  if (role === 'doctor') {
+    return `chroni ${playerName(data.targetId, players)}`;
+  }
+  if (role === 'mafia') {
+    return `cel: ${playerName(data.targetId, players)}`;
+  }
+  return null;
+}
+
+export default function MasterControls({ phase, submissions, players, onAdvance, onEndGame }) {
   const [advancing, setAdvancing] = useState(false);
   const [ending, setEnding] = useState(false);
   const label = PHASE_ACTIONS[phase] ?? PHASE_ACTIONS[null];
@@ -56,15 +80,23 @@ export default function MasterControls({ phase, submissions, onAdvance, onEndGam
       </div>
 
       {submissions && Object.keys(submissions).length > 0 && (
-        <div className="space-y-1">
-          {Object.entries(submissions).map(([role, submitted]) => (
-            <div key={role} className="flex items-center justify-between text-sm">
-              <span className="capitalize text-white/70">{role}</span>
-              <span className={submitted ? 'text-safe font-semibold' : 'text-white/30'}>
-                {submitted ? '✓ Gotowe' : 'Oczekuje…'}
-              </span>
-            </div>
-          ))}
+        <div className="space-y-1.5">
+          {Object.entries(submissions).map(([role, data]) => {
+            const submitted = data === true || data?.submitted;
+            const detail = submissionDetail(role, typeof data === 'object' ? data : null, players);
+            return (
+              <div key={role} className="flex items-center justify-between gap-2 text-sm">
+                <span className="text-white/70 shrink-0">{ROLE_LABELS_PL[role] || role}</span>
+                <span
+                  className={`text-right truncate ${
+                    submitted ? 'text-safe font-semibold' : 'text-white/30'
+                  }`}
+                >
+                  {submitted ? `✓ ${detail || 'Gotowe'}` : 'Oczekuje…'}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 
