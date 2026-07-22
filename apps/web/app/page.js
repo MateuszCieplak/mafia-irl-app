@@ -23,7 +23,7 @@ export default function Home() {
           className="w-full h-auto select-none"
           draggable={false}
         />
-        <div className="pointer-events-none absolute bottom-0 right-0 translate-x-1/2 font-display text-2xl text-white/40 whitespace-nowrap">
+        <div className="pointer-events-none absolute bottom-0 right-0 translate-x-1/2 font-display text-2xl text-blood/70 whitespace-nowrap">
           MAFIA
         </div>
       </div>

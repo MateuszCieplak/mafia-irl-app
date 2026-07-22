@@ -36,7 +36,7 @@ export default function LoginPage() {
           className="w-full h-auto select-none"
           draggable={false}
         />
-        <h1 className="pointer-events-none absolute bottom-0 right-0 translate-x-1/2 font-display text-4xl font-bold tracking-tight whitespace-nowrap">
+        <h1 className="pointer-events-none absolute bottom-0 right-0 translate-x-1/2 font-display text-4xl font-bold tracking-tight whitespace-nowrap text-blood">
           MAFIA
         </h1>
       </div>
