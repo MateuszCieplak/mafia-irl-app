@@ -15,7 +15,7 @@
            text-sm min-h-[48px];
   }
   .btn-primary {
-    @apply btn bg-blood text-white hover:bg-red-800;
+    @apply btn bg-flame-500 text-white hover:bg-flame-600;
   }
   .btn-secondary {
     @apply btn bg-white/10 text-white hover:bg-white/20;
@@ -48,8 +48,8 @@
       linear-gradient(180deg, #0a0a0f 0%, #080c14 100%);
   }
   .bg-role-citizen {
-    background: radial-gradient(ellipse at 50% 0%, rgba(217, 119, 6, 0.14) 0%, transparent 55%),
-      radial-gradient(ellipse at 30% 80%, rgba(180, 83, 9, 0.08) 0%, transparent 50%),
+    background: radial-gradient(ellipse at 50% 0%, rgba(232, 185, 35, 0.16) 0%, transparent 55%),
+      radial-gradient(ellipse at 30% 80%, rgba(247, 88, 13, 0.08) 0%, transparent 50%),
       linear-gradient(180deg, #0a0a0f 0%, #100e08 100%);
   }
   .bg-role-master {

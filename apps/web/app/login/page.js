@@ -29,7 +29,17 @@ export default function LoginPage() {
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6">
-      <h1 className="font-display text-4xl font-bold mb-2 tracking-tight">MAFIA</h1>
+      <div className="relative mb-8 w-28">
+        <img
+          src="/logo.png"
+          alt="Sieje Hot Crew"
+          className="w-full h-auto select-none"
+          draggable={false}
+        />
+        <h1 className="pointer-events-none absolute bottom-0 right-0 translate-x-1/2 font-display text-4xl font-bold tracking-tight whitespace-nowrap">
+          MAFIA
+        </h1>
+      </div>
       <p className="text-white/50 mb-8">Zaloguj się, żeby grać</p>
 
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">

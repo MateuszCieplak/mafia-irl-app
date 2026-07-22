@@ -11,11 +11,20 @@ module.exports = {
         blood: '#b91c1c',
         town: '#1d4ed8',
         safe: '#16a34a',
+        flame: {
+          400: '#ff8c1a',
+          500: '#f7580d',
+          600: '#d21f3c',
+        },
+        gold: {
+          400: '#f2c14e',
+          500: '#e8b923',
+        },
         role: {
           mafia: '#dc2626',
           detective: '#22c55e',
           doctor: '#3b82f6',
-          citizen: '#d97706',
+          citizen: '#e8b923',
         },
       },
       fontFamily: {
