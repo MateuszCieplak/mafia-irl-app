@@ -15,7 +15,7 @@ export default function PhaseBadge({ phase, round, compact = false }) {
   return (
     <div
       className={`inline-flex items-center gap-2 rounded-full font-semibold ${info.color} ${
-        compact ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-xs'
+        compact ? 'px-2.5 py-1 text-[12px]' : 'px-3 py-1.5 text-xs'
       }`}
     >
       {round ? <span className="opacity-60">R{round}</span> : null}

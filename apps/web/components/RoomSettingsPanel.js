@@ -31,7 +31,7 @@ export default function RoomSettingsPanel({ settings, onSave, saving }) {
       <div className="grid grid-cols-2 gap-3">
         {TIMER_FIELDS.map(({ key, label }) => (
           <label key={key} className="space-y-1">
-            <span className="text-[10px] text-white/40 uppercase">{label}</span>
+            <span className="text-[12px] text-white/40 uppercase">{label}</span>
             <input
               type="number"
               min={5}

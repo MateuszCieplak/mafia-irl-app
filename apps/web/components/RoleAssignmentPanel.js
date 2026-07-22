@@ -39,7 +39,7 @@ export default function RoleAssignmentPanel({ players, assignments, onChange }) 
           <h3 className="font-display font-bold text-sm text-white/70 uppercase tracking-wider">
             Przypisanie ról
           </h3>
-          <p className="text-[11px] text-white/35 mt-0.5">
+          <p className="text-[13px] text-white/35 mt-0.5">
             Pozostawione na &quot;Losowo&quot; zostaną przydzielone automatycznie
           </p>
         </div>
@@ -47,7 +47,7 @@ export default function RoleAssignmentPanel({ players, assignments, onChange }) 
           <button
             type="button"
             onClick={clearAll}
-            className="text-[11px] text-white/40 hover:text-white/70 transition-colors"
+            className="text-[13px] text-white/40 hover:text-white/70 transition-colors"
           >
             Wyczyść
           </button>
@@ -57,7 +57,7 @@ export default function RoleAssignmentPanel({ players, assignments, onChange }) 
       {/* Role count summary */}
       <div className="flex gap-2 flex-wrap">
         {[['mafia', 'text-role-mafia'], ['detective', 'text-role-detective'], ['doctor', 'text-role-doctor'], ['citizen', 'text-role-citizen']].map(([role, color]) => (
-          <span key={role} className={`text-[11px] font-semibold ${color} bg-white/5 rounded-full px-2 py-0.5`}>
+          <span key={role} className={`text-[13px] font-semibold ${color} bg-white/5 rounded-full px-2 py-0.5`}>
             {ROLE_LABELS[role]}: {counts[role]}
           </span>
         ))}
@@ -85,7 +85,7 @@ export default function RoleAssignmentPanel({ players, assignments, onChange }) 
               <span className="flex-1 text-sm font-medium truncate min-w-0">
                 {player.username || player.id.slice(0, 8)}
                 {player.isBot && (
-                  <span className="ml-1.5 text-[10px] text-white/35 font-normal">BOT</span>
+                  <span className="ml-1.5 text-[12px] text-white/35 font-normal">BOT</span>
                 )}
               </span>
 

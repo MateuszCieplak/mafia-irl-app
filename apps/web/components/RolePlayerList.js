@@ -89,17 +89,17 @@ export default function RolePlayerList({
 
             <div className="flex flex-wrap justify-center gap-1 min-h-[18px]">
               {player.isMaster && (
-                <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded-full">
+                <span className="text-[12px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded-full">
                   HOST
                 </span>
               )}
               {player.isBot && (
-                <span className="text-[10px] font-mono bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded-full">
+                <span className="text-[12px] font-mono bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded-full">
                   BOT
                 </span>
               )}
               {showRoles && player.role && (
-                <span className={`text-[10px] capitalize ${ROLE_COLORS[player.role] || ''}`}>
+                <span className={`text-[12px] capitalize ${ROLE_COLORS[player.role] || ''}`}>
                   {ROLE_LABELS[player.role] || player.role}
                 </span>
               )}
@@ -107,7 +107,7 @@ export default function RolePlayerList({
 
             {role === 'detective' && investigated && (
               <span
-                className={`text-[10px] font-semibold uppercase tracking-wide ${
+                className={`text-[12px] font-semibold uppercase tracking-wide ${
                   isMafia ? 'text-role-mafia' : 'text-white/35'
                 }`}
               >
@@ -116,12 +116,12 @@ export default function RolePlayerList({
             )}
 
             {role === 'doctor' && lastDoctorTarget === player.id && (
-              <span className="text-[10px] text-role-doctor font-medium">Uleczony ostatnio</span>
+              <span className="text-[12px] text-role-doctor font-medium">Uleczony ostatnio</span>
             )}
 
             {role === 'citizen' && !player.isMaster && (
               <select
-                className="text-[10px] bg-white/5 border border-white/10 rounded-lg px-1 py-1 text-white/70 w-full"
+                className="text-[12px] bg-white/5 border border-white/10 rounded-lg px-1 py-1 text-white/70 w-full"
                 value={notes[player.id] || ''}
                 onChange={(e) => setNoteForPlayer(player.id, e.target.value)}
               >

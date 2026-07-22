@@ -82,7 +82,7 @@ export default function Chat({ channel, roomCode }) {
               className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}
             >
               {!isOwn && (
-                <span className="text-[10px] text-white/30 mb-0.5 ml-1">
+                <span className="text-[12px] text-white/30 mb-0.5 ml-1">
                   {msg.username}
                 </span>
               )}

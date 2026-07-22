@@ -76,7 +76,7 @@ export default function GameMenu({
             <h2 className="font-display font-bold text-lg">{VIEWS[view]?.label}</h2>
             <div className="w-6" />
           </div>
-          <nav className="flex items-center gap-1 text-[10px] text-white/40 uppercase tracking-wider">
+          <nav className="flex items-center gap-1 text-[12px] text-white/40 uppercase tracking-wider">
             {crumbs.map((c, i) => (
               <span key={c} className="flex items-center gap-1">
                 {i > 0 && <span>/</span>}

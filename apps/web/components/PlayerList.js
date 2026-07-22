@@ -81,17 +81,17 @@ export default function PlayerList({
 
               <div className="flex flex-wrap justify-center gap-1">
                 {player.isMaster && (
-                  <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded-full">
+                  <span className="text-[12px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded-full">
                     HOST
                   </span>
                 )}
                 {player.isBot && (
-                  <span className="text-[10px] font-mono bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded-full">
+                  <span className="text-[12px] font-mono bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded-full">
                     BOT
                   </span>
                 )}
                 {isEliminated && (
-                  <span className="text-[10px] text-white/30">wyeliminowany</span>
+                  <span className="text-[12px] text-white/30">wyeliminowany</span>
                 )}
               </div>
 
@@ -102,7 +102,7 @@ export default function PlayerList({
               )}
 
               {showPresence && (
-                <span className="text-[10px] text-white/35">
+                <span className="text-[12px] text-white/35">
                   {online ? 'online' : 'offline'}
                 </span>
               )}
@@ -111,7 +111,7 @@ export default function PlayerList({
                 <button
                   type="button"
                   onClick={() => onKickPlayer(player.id)}
-                  className="btn-secondary text-[10px] px-2 py-1 mt-0.5 w-full"
+                  className="btn-secondary text-[12px] px-2 py-1 mt-0.5 w-full"
                 >
                   Usuń
                 </button>
@@ -154,12 +154,12 @@ export default function PlayerList({
                   {labelForPlayer(player)}
                 </span>
                 {player.isMaster && (
-                  <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded-full">
+                  <span className="text-[12px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded-full">
                     HOST
                   </span>
                 )}
                 {player.isBot && (
-                  <span className="text-[10px] font-mono bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded-full">
+                  <span className="text-[12px] font-mono bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded-full">
                     BOT
                   </span>
                 )}
@@ -170,10 +170,10 @@ export default function PlayerList({
                 </span>
               )}
               {isDoctorBlocked && (
-                <span className="text-[10px] text-white/35 block">Leczony ostatnio</span>
+                <span className="text-[12px] text-white/35 block">Leczony ostatnio</span>
               )}
               {showPresence ? (
-                <span className="text-[10px] text-white/35 block mt-0.5">
+                <span className="text-[12px] text-white/35 block mt-0.5">
                   {online ? 'W grze (online)' : 'Niepołączony'}
                 </span>
               ) : null}
@@ -186,7 +186,7 @@ export default function PlayerList({
                   e.stopPropagation();
                   onKickPlayer(player.id);
                 }}
-                className="btn-secondary text-[10px] px-2 py-1.5 shrink-0"
+                className="btn-secondary text-[12px] px-2 py-1.5 shrink-0"
               >
                 Usuń
               </button>

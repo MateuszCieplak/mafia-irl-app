@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  font-size: 118%;
+}
+
 @layer base {
   body {
     @apply bg-night text-white antialiased;

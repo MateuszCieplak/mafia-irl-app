@@ -227,7 +227,7 @@ export default function RoomPage() {
               </button>
             </div>
             {!canStartGame ? (
-              <p className="text-[10px] text-white/40 text-right max-w-[14rem]">
+              <p className="text-[12px] text-white/40 text-right max-w-[14rem]">
                 {players.length < minPlayers
                   ? `Minimum ${minPlayers} graczy w pokoju, żeby wystartować.`
                   : !allOnline
@@ -265,9 +265,9 @@ export default function RoomPage() {
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">{u.username || u.id.slice(0, 8)}</p>
                   {u.inRoomCode ? (
-                    <p className="text-[10px] text-white/35">W pokoju {u.inRoomCode}</p>
+                    <p className="text-[12px] text-white/35">W pokoju {u.inRoomCode}</p>
                   ) : (
-                    <p className="text-[10px] text-white/35">W lobby</p>
+                    <p className="text-[12px] text-white/35">W lobby</p>
                   )}
                 </div>
                 <button type="button" onClick={() => sendInvite(u.id)} className="btn-primary text-xs shrink-0 px-3 py-2">
@@ -303,7 +303,7 @@ export default function RoomPage() {
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         <div className="p-4 shrink-0">
           <p className="text-xs text-white/40 mb-2">W pokoju</p>
-          <p className="text-[10px] text-white/30 mb-2">
+          <p className="text-[12px] text-white/30 mb-2">
             Kropka przy awatarze: zielona — okno gry otwarte, szara — rozłączony (np. zamknięta przeglądarka).
           </p>
           <PlayerList
