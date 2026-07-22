@@ -46,17 +46,19 @@ export default function NightActionPicker({ role, players, onSubmit, disabled, r
 
       {!disabled && (
         <>
-          <PlayerList
-            players={players}
-            selectable
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            doctorBlockedId={role === 'doctor' ? lastDoctorTarget : null}
-          />
+          <div className="max-h-[45vh] overflow-y-auto -mx-1 px-1">
+            <PlayerList
+              players={players}
+              selectable
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              doctorBlockedId={role === 'doctor' ? lastDoctorTarget : null}
+            />
+          </div>
           <button
             onClick={handleConfirm}
             disabled={!selectedId}
-            className="btn-primary w-full"
+            className="btn-primary w-full shrink-0"
           >
             {info.actionLabel}
           </button>

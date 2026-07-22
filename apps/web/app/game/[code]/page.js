@@ -527,7 +527,7 @@ export default function GamePage() {
             onClick={() => { setShowActionOverlay(false); setActionError(null); }}
             aria-label="Zamknij"
           />
-          <div className="relative w-full max-w-lg mx-4 mb-4 sm:mb-0 max-h-[70dvh] overflow-y-auto animate-popup-in space-y-2">
+          <div className="relative w-full max-w-lg mx-4 mb-4 sm:mb-0 max-h-[85dvh] overflow-y-auto animate-popup-in space-y-2 flex flex-col">
             {/* Error banner */}
             {actionError && (
               <div className="card bg-red-900/40 border border-red-500/30 text-red-200 text-sm py-2 px-3">

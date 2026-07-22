@@ -27,14 +27,16 @@ export default function VotePanel({ players, onVote, disabled }) {
       <h3 className="font-display font-bold text-lg">Głosowanie</h3>
       <p className="text-white/50 text-sm">Wybierz gracza do eliminacji lub pomiń głosowanie</p>
 
-      <PlayerList
-        players={players}
-        selectable
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-      />
+      <div className="max-h-[45vh] overflow-y-auto -mx-1 px-1">
+        <PlayerList
+          players={players}
+          selectable
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+        />
+      </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 shrink-0">
         <button onClick={handleSkip} className="btn-secondary flex-1">
           Pomiń
         </button>
