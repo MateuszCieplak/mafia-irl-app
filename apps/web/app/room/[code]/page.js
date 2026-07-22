@@ -280,16 +280,6 @@ export default function RoomPage() {
         </div>
       )}
 
-      {isMaster && (
-        <div className="px-4 py-3 border-b border-white/10">
-          <RoomSettingsPanel
-            settings={roomSettings}
-            onSave={handleSaveSettings}
-            saving={savingSettings}
-          />
-        </div>
-      )}
-
       {isMaster && players.filter((p) => !p.isMaster).length > 0 && (
         <div className="px-4 py-3 border-b border-white/10">
           <RoleAssignmentPanel
@@ -300,8 +290,17 @@ export default function RoomPage() {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-        <div className="p-4 shrink-0">
+      <div className="flex flex-col lg:flex-row border-b border-white/10">
+        {isMaster && (
+          <div className="flex-1 px-4 py-3 border-b border-white/10 lg:border-b-0 lg:border-r lg:border-white/10">
+            <RoomSettingsPanel
+              settings={roomSettings}
+              onSave={handleSaveSettings}
+              saving={savingSettings}
+            />
+          </div>
+        )}
+        <div className="flex-1 p-4">
           <p className="text-xs text-white/40 mb-2">W pokoju</p>
           <p className="text-[12px] text-white/30 mb-2">
             Kropka przy awatarze: zielona — okno gry otwarte, szara — rozłączony (np. zamknięta przeglądarka).
@@ -315,9 +314,10 @@ export default function RoomPage() {
             gridLayout
           />
         </div>
-        <div className="flex-1 min-h-0 border-t border-white/10">
-          <Chat channel="lobby" roomCode={code} />
-        </div>
+      </div>
+
+      <div className="flex-1 min-h-0">
+        <Chat channel="lobby" roomCode={code} />
       </div>
     </div>
   );
