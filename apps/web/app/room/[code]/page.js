@@ -224,7 +224,7 @@ export default function RoomPage() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <div className="px-4 py-3 border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
+      <div className="sticky top-0 z-10 bg-night px-4 py-3 border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="font-display text-lg font-bold">Pokój</h2>
           <p className="font-mono text-2xl font-bold tracking-[0.2em] text-town">{code}</p>

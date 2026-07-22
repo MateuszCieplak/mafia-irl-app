@@ -48,11 +48,28 @@ function submissionDetail(role, data, players) {
   return null;
 }
 
-export default function MasterControls({ phase, submissions, players, onAdvance, onEndGame }) {
+function formatTime(date) {
+  if (!date) return '';
+  const d = date instanceof Date ? date : new Date(date);
+  return d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+export default function MasterControls({
+  phase,
+  submissions,
+  voteStatus,
+  players,
+  onAdvance,
+  onEndGame,
+}) {
   const [advancing, setAdvancing] = useState(false);
   const [ending, setEnding] = useState(false);
   const label = PHASE_ACTIONS[phase] ?? PHASE_ACTIONS[null];
   const quote = PHASE_QUOTES[phase] ?? PHASE_QUOTES[null];
+
+  const voters = phase === 'day_vote'
+    ? (players || []).filter((p) => !p.isMaster && !p.eliminated)
+    : [];
 
   async function handleAdvance() {
     setAdvancing(true);
@@ -78,6 +95,32 @@ export default function MasterControls({ phase, submissions, players, onAdvance,
         <span className="text-lg">{quote.icon}</span>
         <span className="font-display font-semibold text-white/90 text-sm">{quote.text}</span>
       </div>
+
+      {voters.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[12px] text-white/40 uppercase tracking-wider">
+            <span>Status głosowania</span>
+            <span>
+              {voters.filter((p) => voteStatus?.[p.id]).length}/{voters.length}
+            </span>
+          </div>
+          {voters.map((p) => {
+            const votedAt = voteStatus?.[p.id];
+            return (
+              <div key={p.id} className="flex items-center justify-between gap-2 text-sm">
+                <span className="text-white/70 shrink-0 truncate">{p.username || p.id}</span>
+                <span
+                  className={`text-right truncate ${
+                    votedAt ? 'text-safe font-semibold' : 'text-white/30'
+                  }`}
+                >
+                  {votedAt ? `✓ zagłosował(a) o ${formatTime(votedAt)}` : 'Oczekuje…'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {submissions && Object.keys(submissions).length > 0 && (
         <div className="space-y-1.5">

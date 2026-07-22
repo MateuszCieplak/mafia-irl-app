@@ -5,6 +5,14 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/AuthContext';
 
+function getRegisterErrorMessage(err) {
+  const fields = err?.response?.data || {};
+  if (fields.email) return 'Ten adres e-mail jest już zajęty.';
+  if (fields.username) return 'Ta nazwa gracza jest już zajęta.';
+  if (fields.password) return 'Hasło jest nieprawidłowe (min. 8 znaków).';
+  return err?.response?.message ? 'Błąd rejestracji. Spróbuj ponownie.' : 'Błąd rejestracji.';
+}
+
 export default function RegisterPage() {
   const { register } = useAuth();
   const router = useRouter();
@@ -22,7 +30,7 @@ export default function RegisterPage() {
       await register(email, password, username);
       router.push('/lobby');
     } catch (err) {
-      setError(err?.response?.message || 'Błąd rejestracji');
+      setError(getRegisterErrorMessage(err));
     } finally {
       setLoading(false);
     }
