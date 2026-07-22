@@ -90,14 +90,21 @@ export async function processNightAction(io, state, pb, actorId, targetId) {
     if (targetRole === undefined) return { ok: false, error: 'invalid_target' };
     const isMafia = targetRole === 'mafia';
 
-    if (!actorIsBot) {
-      await pb.collection('night_actions').create({
-        round_id: state.currentRoundId,
-        actor_id: actorId,
-        action_type: 'investigate',
-        target_id: targetId,
-        result: { is_mafia: isMafia },
-      });
+    // Wpis do PB tylko gdy zarówno aktor, jak i cel są prawdziwymi graczami
+    // (boty nie mają rekordu w _pb_users_auth_, więc target_id/actor_id jako FK by się nie zapisało).
+    if (!actorIsBot && !isPlayerBot(state, targetId)) {
+      try {
+        await pb.collection('night_actions').create({
+          round_id: state.currentRoundId,
+          actor_id: actorId,
+          action_type: 'investigate',
+          target_id: targetId,
+          result: { is_mafia: isMafia },
+        });
+      } catch (err) {
+        // Błąd zapisu do PB nie powinien blokować akcji nocnej — wynik jest już znany.
+        console.error('[detective] night_actions.create failed:', err.message);
+      }
     }
 
     state.nightActions.detective = { actorId, targetId };
@@ -120,13 +127,17 @@ export async function processNightAction(io, state, pb, actorId, targetId) {
       return { ok: false, error: 'repeat_protect_forbidden' };
     }
 
-    if (!actorIsBot) {
-      await pb.collection('night_actions').create({
-        round_id: state.currentRoundId,
-        actor_id: actorId,
-        action_type: 'protect',
-        target_id: targetId,
-      });
+    if (!actorIsBot && !isPlayerBot(state, targetId)) {
+      try {
+        await pb.collection('night_actions').create({
+          round_id: state.currentRoundId,
+          actor_id: actorId,
+          action_type: 'protect',
+          target_id: targetId,
+        });
+      } catch (err) {
+        console.error('[doctor] night_actions.create failed:', err.message);
+      }
     }
 
     state.nightActions.doctor = { actorId, targetId };
@@ -167,13 +178,17 @@ export async function processNightAction(io, state, pb, actorId, targetId) {
 
     if (consensus) {
       const mafiaTarget = targets[0];
-      if (!actorIsBot) {
-        await pb.collection('night_actions').create({
-          round_id: state.currentRoundId,
-          actor_id: actorId,
-          action_type: 'kill',
-          target_id: mafiaTarget,
-        });
+      if (!actorIsBot && !isPlayerBot(state, mafiaTarget)) {
+        try {
+          await pb.collection('night_actions').create({
+            round_id: state.currentRoundId,
+            actor_id: actorId,
+            action_type: 'kill',
+            target_id: mafiaTarget,
+          });
+        } catch (err) {
+          console.error('[mafia] night_actions.create failed:', err.message);
+        }
       }
       state.nightActions.mafia = { targetId: mafiaTarget };
       notifyMasterSubmission(io, state, 'mafia', {
