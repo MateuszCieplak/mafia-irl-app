@@ -64,9 +64,13 @@ export default function GamePage() {
   const [actionError, setActionError] = useState(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
-  const handleReturnToRoom = useCallback(async () => {
+  const handleReturnToRoom = useCallback(() => {
+    // Reset pokoju leci w tle — serwer czyści role/eliminacje gracz po graczu,
+    // więc czekanie na ack dawało wyraźne opóźnienie po kliknięciu. Socket jest
+    // wspólny dla całej aplikacji, więc żądanie dokończy się mimo nawigacji,
+    // a pokój zsynchronizuje się eventem `room_reset_to_lobby`.
     if (isMaster) {
-      await emit('return_to_room', {});
+      emit('return_to_room', {});
     }
     router.push(`/room/${code}`);
   }, [isMaster, emit, router, code]);
@@ -137,7 +141,9 @@ export default function GamePage() {
         setSubmissions({});
         setVoteStatus({});
         setShowActionOverlay(false);
-        setPendingVerdict(null);
+        // UWAGA: nie czyścimy tutaj `pendingVerdict`. Master przechodzi dalej
+        // zaraz po rozstrzygnięciu, więc czyszczenie na zmianie fazy zabierało
+        // graczom werdykt zanim zdążyli go przeczytać. Popup zamyka gracz.
       }),
       on('night_action_submitted', (data) => {
         setSubmissions((prev) => ({ ...prev, [data.role]: data }));
@@ -163,7 +169,7 @@ export default function GamePage() {
               title: 'Rozstrzygnięcie nocy',
               playerName: victim?.username || data.eliminatedPlayerId,
               message: `Tej nocy zginął(a): ${victim?.username || data.eliminatedPlayerId}`,
-              autoShow: false,
+              autoShow: true,
             });
           }
         } else if (!isMasterRef.current) {
@@ -172,7 +178,7 @@ export default function GamePage() {
             source: 'night',
             title: 'Rozstrzygnięcie nocy',
             message: 'Noc spokojna — nikt nie zginął',
-            autoShow: false,
+            autoShow: true,
           });
         }
       }),
@@ -192,7 +198,7 @@ export default function GamePage() {
               source: 'vote',
               playerName: victim?.username || data.eliminatedPlayerId,
               message: `Wioska wyrzuciła: ${victim?.username || data.eliminatedPlayerId}`,
-              autoShow: false,
+              autoShow: true,
             });
           }
         } else if (!isMasterRef.current) {
@@ -207,7 +213,7 @@ export default function GamePage() {
             source: 'vote',
             outcome: data.outcome,
             message: msg,
-            autoShow: false,
+            autoShow: true,
           });
         }
       }),
