@@ -39,7 +39,7 @@ export default function GamePage() {
   const { code } = useParams();
   const router = useRouter();
   const { user } = useAuth();
-  const { emit, on, connected } = useSocket();
+  const { emit, on, connected, reconnect } = useSocket();
 
   const [phase, setPhase] = useState(null);
   const [round, setRound] = useState(0);
@@ -78,8 +78,8 @@ export default function GamePage() {
   // Avoid showing loader on reconnects after first load
   const initialLoadDone = useRef(false);
 
-  const loadState = useCallback(async () => {
-    const res = await emit('get_game_state', {});
+  const loadState = useCallback(async (opts) => {
+    const res = await emit('get_game_state', {}, opts);
     if (res?.ok) {
       setPhase(res.phase);
       setRound(res.round);
@@ -99,7 +99,28 @@ export default function GamePage() {
     }
     initialLoadDone.current = true;
     setStateLoaded(true);
+    return Boolean(res?.ok);
   }, [emit, user?.id]);
+
+  // Po wygaszeniu ekranu strona jest zamrożona: eventy z tego czasu przepadają,
+  // a websocket bywa martwy tylko po stronie serwera („zombie” — klient nadal
+  // uważa się za połączony). Po powrocie dociągamy stan z krótkim limitem, a
+  // gdy nie odpowie, restartujemy połączenie; wtedy efekt na `connected`
+  // wykona join_room i pełne odświeżenie.
+  useEffect(() => {
+    async function resync() {
+      if (document.visibilityState !== 'visible') return;
+      const ok = await loadState({ timeoutMs: 3000 });
+      if (!ok) reconnect();
+    }
+
+    document.addEventListener('visibilitychange', resync);
+    window.addEventListener('pageshow', resync);
+    return () => {
+      document.removeEventListener('visibilitychange', resync);
+      window.removeEventListener('pageshow', resync);
+    };
+  }, [loadState, reconnect]);
 
   useEffect(() => {
     if (!connected) return;
