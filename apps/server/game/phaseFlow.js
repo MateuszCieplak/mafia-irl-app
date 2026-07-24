@@ -31,7 +31,7 @@ export function phaseDurationMs(state, phase) {
 
   switch (phase) {
     case 'night_detective':
-      return sec('phase_timer_detective_sec', 30) * 1000;
+      return sec('phase_timer_detective_sec', 60) * 1000;
     case 'night_doctor':
       return sec('phase_timer_doctor_sec', 30) * 1000;
     case 'night_mafia':
