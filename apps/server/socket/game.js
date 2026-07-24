@@ -64,6 +64,7 @@ export function registerGameHandlers(io, socket, pb) {
       state.eliminatedBots = new Set();
       state.botMemory = null;
       state.phaseResult = null;
+      state.advancing = false;
       state.currentRoundId = round.id;
 
       const meta = roomEventMeta(state);
@@ -89,13 +90,30 @@ export function registerGameHandlers(io, socket, pb) {
     }
   });
 
-  socket.on('advance_phase', async (_, callback) => {
+  socket.on('advance_phase', async (data, callback) => {
     const state = rooms.get(socket.roomId);
     if (!state) return callback?.({ ok: false, error: 'no_room' });
     if (socket.userId !== state.hostId) return callback?.({ ok: false, error: 'not_master' });
     if (state.status !== 'in_progress') return callback?.({ ok: false, error: 'game_not_started' });
-    clearPhaseTimer(state);
-    await advancePhaseInternal(io, state, pb, callback);
+
+    // Jedno kliknięcie = jedna faza. Podwójny tap na telefonie albo dwie karty
+    // mastera potrafiły przeskoczyć całą fazę — najdotkliwiej rozstrzygnięcie
+    // nocy/głosowania, którego gracze wtedy w ogóle nie zobaczyli.
+    const from = data && typeof data === 'object' ? data.from : undefined;
+    if (from !== undefined && from !== state.phase) {
+      return callback?.({ ok: false, error: 'stale_phase', phase: state.phase });
+    }
+    if (state.advancing) {
+      return callback?.({ ok: false, error: 'advance_in_progress', phase: state.phase });
+    }
+
+    state.advancing = true;
+    try {
+      clearPhaseTimer(state);
+      await advancePhaseInternal(io, state, pb, callback);
+    } finally {
+      state.advancing = false;
+    }
   });
 
   socket.on('end_game', async (_data, callback) => {

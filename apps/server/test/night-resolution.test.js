@@ -127,6 +127,35 @@ describe('5. Rozwiązanie nocy i blokady wyeliminowanych', () => {
     clearAssignRolesForTest();
   });
 
+  it('5.5 Podwójne kliknięcie mastera nie przeskakuje fazy rozstrzygnięcia', async () => {
+    const { masterSocket, sockets, socketById } = await setupLobbyStartedWithPhaseDetective(ctx.url);
+
+    await submitNightAction(socketById.p01.socket, 'p06');
+    await advancePhase(masterSocket);
+    await submitNightAction(socketById.p02.socket, 'p03');
+    await advancePhase(masterSocket);
+    await submitNightAction(socketById.p03.socket, 'p05');
+    await submitNightAction(socketById.p04.socket, 'p05');
+
+    // Oba kliknięcia wychodzą z night_mafia — drugie to duplikat (podwójny tap),
+    // więc gra musi zatrzymać się na night_resolve, a nie wpaść w dyskusję.
+    const [first, second] = await Promise.all([
+      emitAck(masterSocket, 'advance_phase', { from: 'night_mafia' }),
+      emitAck(masterSocket, 'advance_phase', { from: 'night_mafia' }),
+    ]);
+
+    expect([first.ok, second.ok].filter(Boolean)).toHaveLength(1);
+    const rejected = first.ok ? second : first;
+    expect(['stale_phase', 'advance_in_progress']).toContain(rejected.error);
+
+    const st = await emitAck(socketById.p06.socket, 'get_game_state');
+    expect(st.phase).toBe('night_resolve');
+
+    masterSocket.disconnect();
+    for (const { socket } of sockets) socket.disconnect();
+    clearAssignRolesForTest();
+  });
+
   it('5.4 Werdykt nocy jest w get_game_state przez całą fazę night_resolve', async () => {
     // Gracz z wygaszonym ekranem nie odbiera eventu `night_resolved` — ekran
     // werdyktu musi dać się odtworzyć ze stanu, dopóki trwa faza.
