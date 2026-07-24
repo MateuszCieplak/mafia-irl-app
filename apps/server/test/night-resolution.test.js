@@ -127,6 +127,39 @@ describe('5. Rozwiązanie nocy i blokady wyeliminowanych', () => {
     clearAssignRolesForTest();
   });
 
+  it('5.6 Advance z night_resolve zbyt szybko po wejściu jest odrzucony (double-tap)', async () => {
+    const { masterSocket, sockets, socketById } = await setupLobbyStartedWithPhaseDetective(ctx.url);
+
+    await submitNightAction(socketById.p01.socket, 'p06');
+    await advancePhase(masterSocket);
+    await submitNightAction(socketById.p02.socket, 'p03');
+    await advancePhase(masterSocket);
+    await submitNightAction(socketById.p03.socket, 'p05');
+    await submitNightAction(socketById.p04.socket, 'p05');
+
+    // Wejście w night_resolve.
+    await advancePhase(masterSocket);
+
+    // Włączamy realny guard tylko na czas tej asercji (globalnie w testach = 0).
+    process.env.MAFIA_RESOLVE_MIN_MS = '5000';
+    try {
+      // Natychmiastowy drugi advance to przypadkowy double-tap — musi odbić się
+      // o minimalny czas trwania fazy, żeby gracze zdążyli zobaczyć wynik.
+      const tooSoon = await emitAck(masterSocket, 'advance_phase', { from: 'night_resolve' });
+      expect(tooSoon.ok).toBe(false);
+      expect(tooSoon.error).toBe('resolve_too_soon');
+
+      const st = await emitAck(socketById.p06.socket, 'get_game_state');
+      expect(st.phase).toBe('night_resolve');
+    } finally {
+      process.env.MAFIA_RESOLVE_MIN_MS = '0';
+    }
+
+    masterSocket.disconnect();
+    for (const { socket } of sockets) socket.disconnect();
+    clearAssignRolesForTest();
+  });
+
   it('5.5 Podwójne kliknięcie mastera nie przeskakuje fazy rozstrzygnięcia', async () => {
     const { masterSocket, sockets, socketById } = await setupLobbyStartedWithPhaseDetective(ctx.url);
 

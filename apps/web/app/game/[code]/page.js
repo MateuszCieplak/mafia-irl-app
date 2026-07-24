@@ -265,9 +265,10 @@ export default function GamePage() {
     // `from` chroni przed przeskoczeniem fazy przy podwójnym kliknięciu lub
     // retry — serwer odrzuci żądanie, jeśli faza zdążyła się już zmienić.
     const res = await emit('advance_phase', { from: phase });
-    // `stale_phase` / `advance_in_progress` to właśnie odrzucone duplikaty —
-    // faza już się zmieniła, więc nie ma o czym informować mastera.
-    if (!res?.ok && res?.error !== 'stale_phase' && res?.error !== 'advance_in_progress') {
+    // Odrzucone duplikaty (podwójny tap / retry) nie są błędem — faza albo już
+    // się zmieniła, albo trwa minimalny czas rozstrzygnięcia. Nie alarmujemy.
+    const ignored = ['stale_phase', 'advance_in_progress', 'resolve_too_soon'];
+    if (!res?.ok && !ignored.includes(res?.error)) {
       alert(`Nie udało się zmienić fazy: ${res?.error || 'nieznany błąd'}`);
     }
   }

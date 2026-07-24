@@ -64,6 +64,7 @@ export function registerGameHandlers(io, socket, pb) {
       state.eliminatedBots = new Set();
       state.botMemory = null;
       state.phaseResult = null;
+      state.resolveEnteredAt = null;
       state.advancing = false;
       state.currentRoundId = round.id;
 
@@ -90,6 +91,13 @@ export function registerGameHandlers(io, socket, pb) {
     }
   });
 
+  // Ile faza rozstrzygnięcia musi trwać, zanim master może z niej wyjść. Chroni
+  // przed przypadkowym podwójnym tapnięciem, które przeskakiwało wynik nocy /
+  // głosowania. Człowiek i tak czyta werdykt dłużej; drugi tap w tym oknie to
+  // na pewno duplikat. Działa niezależnie od wersji frontu (nawet gdy stary
+  // bundle nie wysyła `from`). Nadpisywalne przez env (testy: 0).
+  const resolveMinMs = () => Number(process.env.MAFIA_RESOLVE_MIN_MS ?? 800);
+
   socket.on('advance_phase', async (data, callback) => {
     const state = rooms.get(socket.roomId);
     if (!state) return callback?.({ ok: false, error: 'no_room' });
@@ -106,6 +114,21 @@ export function registerGameHandlers(io, socket, pb) {
     if (state.advancing) {
       return callback?.({ ok: false, error: 'advance_in_progress', phase: state.phase });
     }
+
+    const isResolve = state.phase === 'night_resolve' || state.phase === 'day_resolve';
+    if (isResolve && state.resolveEnteredAt) {
+      const elapsed = Date.now() - state.resolveEnteredAt;
+      if (elapsed < resolveMinMs()) {
+        console.log(
+          `[game] advance_phase odrzucony (double-tap): faza=${state.phase}, elapsed=${elapsed}ms`,
+        );
+        return callback?.({ ok: false, error: 'resolve_too_soon', phase: state.phase });
+      }
+    }
+
+    console.log(
+      `[game] advance_phase: user=${socket.userId} from=${from ?? '—'} state.phase=${state.phase}`,
+    );
 
     state.advancing = true;
     try {
@@ -173,6 +196,7 @@ export function registerGameHandlers(io, socket, pb) {
       state.eliminatedBots = new Set();
       state.botMemory = null;
       state.phaseResult = null;
+      state.resolveEnteredAt = null;
       state.currentRoundId = null;
 
       io.to(`room:${state.code}`).emit('room_reset_to_lobby', {

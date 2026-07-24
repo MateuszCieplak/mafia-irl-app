@@ -208,6 +208,11 @@ export async function advancePhaseInternal(io, state, pb, callback) {
   // temu gracz, którego telefon spał w chwili `night_resolved`, dostanie go
   // z `get_game_state` po obudzeniu, dopóki master nie przejdzie dalej.
   state.phaseResult = null;
+  // Znacznik wejścia w fazę rozstrzygnięcia — pilnuje minimalnego czasu jej
+  // trwania (patrz RESOLVE_MIN_MS w socket/game.js), żeby przypadkowy podwójny
+  // tap nie przeskoczył jej, zanim gracze w ogóle zobaczą wynik.
+  state.resolveEnteredAt =
+    nextPhase === 'night_resolve' || nextPhase === 'day_resolve' ? Date.now() : null;
 
   if (state.currentRoundId) {
     await pb.collection('rounds').update(state.currentRoundId, { phase: nextPhase });

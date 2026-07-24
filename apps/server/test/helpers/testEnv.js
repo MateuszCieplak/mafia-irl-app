@@ -7,6 +7,9 @@ import { presence } from '../../game/presence.js';
 import { clearAssignRolesForTest } from '../../game/roles.js';
 
 process.env.MAFIA_TEST_AUTH = '1';
+// Guard minimalnego czasu fazy rozstrzygnięcia wyłączony domyślnie — testy
+// sterują czasem manualnie. Test double-tap (5.6) włącza go u siebie.
+process.env.MAFIA_RESOLVE_MIN_MS = '0';
 
 export function resetInMemoryGameState() {
   rooms.clear();
