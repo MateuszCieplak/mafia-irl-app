@@ -242,6 +242,8 @@ export async function advancePhaseInternal(io, state, pb, callback) {
     await pb.collection('rounds').update(state.currentRoundId, { phase: nextPhase });
   }
 
+  schedulePhaseTimer(io, state, pb, nextPhase, advancePhaseInternal);
+
   const meta = phaseMeta(state);
   io.to(`room:${state.code}`).emit('phase_changed', {
     phase: nextPhase,
@@ -287,8 +289,6 @@ export async function advancePhaseInternal(io, state, pb, callback) {
 
   await emitNightActionPrompts(io, state, pb);
   scheduleBotPhaseActions(io, state, pb, nextPhase);
-
-  schedulePhaseTimer(io, state, pb, nextPhase, advancePhaseInternal);
 
   // Auto-advance day_resolve phase after a short delay (night_resolve now uses
   // the standard phase timer above, with its own 10s duration).

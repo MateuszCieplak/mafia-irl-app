@@ -72,6 +72,10 @@ export default function RoomPage() {
     const offSettings = on('room_settings_updated', (data) => {
       if (data?.settings) setRoomSettings(data.settings);
     });
+    const offReset = on('room_reset_to_lobby', (data) => {
+      setRoomStatus('lobby');
+      if (data?.players) setPlayers(data.players);
+    });
 
     return () => {
       offJoin?.();
@@ -79,6 +83,7 @@ export default function RoomPage() {
       offLeave?.();
       offStart?.();
       offSettings?.();
+      offReset?.();
     };
   }, [connected, code, user?.id, emit, on, router]);
 

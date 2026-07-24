@@ -63,6 +63,13 @@ export default function GamePage() {
   const [actionError, setActionError] = useState(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
+  const handleReturnToRoom = useCallback(async () => {
+    if (isMaster) {
+      await emit('return_to_room', {});
+    }
+    router.push(`/room/${code}`);
+  }, [isMaster, emit, router, code]);
+
   // Avoid showing loader on reconnects after first load
   const initialLoadDone = useRef(false);
 
@@ -366,7 +373,7 @@ export default function GamePage() {
         {/* Winner banner */}
         <div className="text-center animate-reveal-in shrink-0">
           <p className="text-xs uppercase tracking-[0.3em] text-white/40 mb-2">Koniec gry</p>
-          <h1 className={`font-display text-5xl font-bold ${titleClassOver}`}>
+          <h1 className={`font-display text-3xl sm:text-5xl font-bold ${titleClassOver}`}>
             {titleTextOver}
           </h1>
           <p className="text-white/40 text-sm mt-2">
@@ -383,15 +390,13 @@ export default function GamePage() {
 
         {/* Navigation buttons */}
         <div className="flex flex-col sm:flex-row gap-3 mt-2 w-full max-w-xs animate-reveal-in shrink-0">
-          {isMaster && (
-            <button
-              type="button"
-              onClick={() => router.push(`/room/${code}`)}
-              className="btn-primary flex-1 text-center"
-            >
-              Wróć do pokoju
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleReturnToRoom}
+            className="btn-primary flex-1 text-center"
+          >
+            Wróć do pokoju
+          </button>
           <button
             type="button"
             onClick={() => router.push('/lobby')}
@@ -610,8 +615,8 @@ export default function GamePage() {
         </div>
       )}
 
-      {/* Verdict — master ma już te informacje w panelu insightów, nie blokujemy mu widoku popupem */}
-      {pendingVerdict && !isMaster && (
+      {/* Verdict */}
+      {pendingVerdict && (
         <VerdictReveal
           verdict={pendingVerdict}
           autoShow={pendingVerdict.autoShow}

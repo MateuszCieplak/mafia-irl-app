@@ -2,6 +2,8 @@ import { rooms } from '../game/state.js';
 import { assignRoles } from '../game/roles.js';
 import { roomEventMeta, emitMasterInsight } from '../game/events.js';
 import { processNightAction, processVote } from '../game/actions.js';
+import { buildRoomPlayerList } from '../game/roomPlayers.js';
+import { ensureAdminAuth } from '../lib/pocketbase.js';
 import {
   advancePhaseInternal,
   clearPhaseTimer,
@@ -101,6 +103,57 @@ export function registerGameHandlers(io, socket, pb) {
       await emitGameOver(io, state, 'master_ended', pb, callback);
     } catch (err) {
       console.error('[game] end_game error:', err.message);
+      callback?.({ ok: false, error: err.message });
+    }
+  });
+
+  // Master wraca z ekranu "koniec gry" do pokoju — resetujemy pokój tak,
+  // żeby zachowywał się jak świeżo utworzony (ustawienia edytowalne, boty
+  // można dodawać, role/eliminacje z poprzedniej gry wyczyszczone).
+  socket.on('return_to_room', async (_data, callback) => {
+    try {
+      const state = rooms.get(socket.roomId);
+      if (!state) return callback?.({ ok: false, error: 'no_room' });
+      if (socket.userId !== state.hostId) return callback?.({ ok: false, error: 'not_master' });
+      if (state.status !== 'finished') return callback?.({ ok: false, error: 'game_not_finished' });
+
+      clearPhaseTimer(state);
+      await ensureAdminAuth();
+      await pb.collection('rooms').update(state.id, { status: 'lobby' });
+
+      const participants = await pb.collection('room_players').getFullList({
+        filter: `room_id = "${state.id}"`,
+        requestKey: null,
+      });
+      for (const p of participants) {
+        await pb.collection('room_players').update(p.id, { role: '', eliminated_at: null });
+      }
+
+      // Boty istnieją tylko w pamięci — usuwamy je razem z resztą stanu gry.
+      for (const [userId, info] of Array.from(state.players.entries())) {
+        if (info.isBot) state.players.delete(userId);
+      }
+
+      state.status = 'lobby';
+      state.phase = null;
+      state.round = 0;
+      state.roles = {};
+      state.winner = undefined;
+      state.nightActions = {};
+      state.votes = new Map();
+      state.mafiaTargets = new Map();
+      state.previousDoctorProtectTarget = null;
+      state.eliminatedBots = new Set();
+      state.botMemory = null;
+      state.currentRoundId = null;
+
+      io.to(`room:${state.code}`).emit('room_reset_to_lobby', {
+        players: buildRoomPlayerList(state),
+      });
+
+      callback?.({ ok: true });
+    } catch (err) {
+      console.error('[game] return_to_room error:', err.message);
       callback?.({ ok: false, error: err.message });
     }
   });
