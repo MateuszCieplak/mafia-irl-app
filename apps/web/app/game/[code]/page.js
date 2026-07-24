@@ -12,7 +12,7 @@ import VotePanel from '@/components/VotePanel';
 import MasterControls from '@/components/MasterControls';
 import MasterInsightFeed from '@/components/MasterInsightFeed';
 import Chat from '@/components/Chat';
-import VerdictReveal from '@/components/VerdictReveal';
+import PhaseResultScreen from '@/components/PhaseResultScreen';
 import PlayerList from '@/components/PlayerList';
 import { ROLE_LABELS, ROLE_COLORS, ROLE_BG } from '@/lib/roleTheme';
 
@@ -58,7 +58,7 @@ export default function GamePage() {
   const [phaseDeadline, setPhaseDeadline] = useState(null);
   const [detectiveHistory, setDetectiveHistory] = useState([]);
   const [lastDoctorTarget, setLastDoctorTarget] = useState(null);
-  const [pendingVerdict, setPendingVerdict] = useState(null);
+  const [phaseResult, setPhaseResult] = useState(null);
   const [recentlyEliminatedId, setRecentlyEliminatedId] = useState(null);
   const [showActionOverlay, setShowActionOverlay] = useState(false);
   const [actionError, setActionError] = useState(null);
@@ -78,22 +78,6 @@ export default function GamePage() {
   // Avoid showing loader on reconnects after first load
   const initialLoadDone = useRef(false);
 
-  // Zawsze aktualny odczyt listy graczy — potrzebny w handlerach socketowych,
-  // żeby nie wywoływać setState w środku funkcji-aktualizatora innego setState
-  // (co powodowało, że werdykt czasem nie pokazywał się, np. gdy mafia
-  // skutecznie kogoś zabiła w nocy).
-  const playersRef = useRef(players);
-  useEffect(() => {
-    playersRef.current = players;
-  }, [players]);
-
-  // Ten sam problem dotyczy `isMaster` — handlery night_resolved/vote_resolved
-  // muszą wiedzieć, czy odbiorcą jest master, żeby nie pokazywać mu popupu werdyktu.
-  const isMasterRef = useRef(isMaster);
-  useEffect(() => {
-    isMasterRef.current = isMaster;
-  }, [isMaster]);
-
   const loadState = useCallback(async () => {
     const res = await emit('get_game_state', {});
     if (res?.ok) {
@@ -103,6 +87,9 @@ export default function GamePage() {
       setPlayers(res.players || []);
       setIsMaster(res.isMaster || res.players?.some((p) => p.id === user?.id && p.isMaster));
       setPhaseDeadline(res.phaseDeadline ?? null);
+      // Wynik rozstrzygnięcia przychodzi ze stanu, nie tylko z eventu — dzięki
+      // temu ekran werdyktu odtwarza się po obudzeniu telefonu / odświeżeniu.
+      setPhaseResult(res.phaseResult ?? null);
       setDetectiveHistory(res.your_action_history?.detective || []);
       setLastDoctorTarget(res.lastDoctorTarget ?? null);
       // Gra już zakończona (np. odświeżenie strony po "Zakończ grę") — pokaż ekran końca gry.
@@ -141,9 +128,10 @@ export default function GamePage() {
         setSubmissions({});
         setVoteStatus({});
         setShowActionOverlay(false);
-        // UWAGA: nie czyścimy tutaj `pendingVerdict`. Master przechodzi dalej
-        // zaraz po rozstrzygnięciu, więc czyszczenie na zmianie fazy zabierało
-        // graczom werdykt zanim zdążyli go przeczytać. Popup zamyka gracz.
+        // Wynik należy do fazy rozstrzygnięcia — serwer emituje `phase_changed`
+        // tuż przed `night_resolved`/`vote_resolved`, więc czyszczenie tutaj
+        // kasuje poprzedni werdykt, a nowy zaraz go zastąpi.
+        setPhaseResult(null);
       }),
       on('night_action_submitted', (data) => {
         setSubmissions((prev) => ({ ...prev, [data.role]: data }));
@@ -152,8 +140,12 @@ export default function GamePage() {
         setVoteStatus((prev) => ({ ...prev, [data.voterId]: new Date() }));
       }),
       on('night_resolved', (data) => {
+        setPhaseResult({
+          kind: 'night',
+          eliminatedPlayerId: data.eliminatedPlayerId ?? null,
+          survivedNight: data.survivedNight,
+        });
         if (data.eliminatedPlayerId) {
-          const victim = playersRef.current.find((p) => p.id === data.eliminatedPlayerId);
           setPlayers((prev) =>
             prev.map((p) =>
               p.id === data.eliminatedPlayerId ? { ...p, eliminated: true } : p,
@@ -161,30 +153,15 @@ export default function GamePage() {
           );
           setRecentlyEliminatedId(data.eliminatedPlayerId);
           setTimeout(() => setRecentlyEliminatedId(null), 3000);
-          // Master ma już te dane w MasterInsightFeed — popup werdyktu jest tylko dla graczy.
-          if (!isMasterRef.current) {
-            setPendingVerdict({
-              type: 'elimination',
-              source: 'night',
-              title: 'Rozstrzygnięcie nocy',
-              playerName: victim?.username || data.eliminatedPlayerId,
-              message: `Tej nocy zginął(a): ${victim?.username || data.eliminatedPlayerId}`,
-              autoShow: true,
-            });
-          }
-        } else if (!isMasterRef.current) {
-          setPendingVerdict({
-            type: 'safe',
-            source: 'night',
-            title: 'Rozstrzygnięcie nocy',
-            message: 'Noc spokojna — nikt nie zginął',
-            autoShow: true,
-          });
         }
       }),
       on('vote_resolved', (data) => {
+        setPhaseResult({
+          kind: 'vote',
+          eliminatedPlayerId: data.eliminatedPlayerId ?? null,
+          outcome: data.outcome,
+        });
         if (data.eliminatedPlayerId) {
-          const victim = playersRef.current.find((p) => p.id === data.eliminatedPlayerId);
           setPlayers((prev) =>
             prev.map((p) =>
               p.id === data.eliminatedPlayerId ? { ...p, eliminated: true } : p,
@@ -192,29 +169,6 @@ export default function GamePage() {
           );
           setRecentlyEliminatedId(data.eliminatedPlayerId);
           setTimeout(() => setRecentlyEliminatedId(null), 3000);
-          if (!isMasterRef.current) {
-            setPendingVerdict({
-              type: 'elimination',
-              source: 'vote',
-              playerName: victim?.username || data.eliminatedPlayerId,
-              message: `Wioska wyrzuciła: ${victim?.username || data.eliminatedPlayerId}`,
-              autoShow: true,
-            });
-          }
-        } else if (!isMasterRef.current) {
-          const msg =
-            data.outcome === 'tie'
-              ? 'Remis — nikt nie odpada'
-              : data.outcome === 'vote_skipped'
-              ? 'Głosowanie pominięte'
-              : 'Brak rozstrzygnięcia';
-          setPendingVerdict({
-            type: 'safe',
-            source: 'vote',
-            outcome: data.outcome,
-            message: msg,
-            autoShow: true,
-          });
         }
       }),
       on('game_over', (data) => {
@@ -309,9 +263,15 @@ export default function GamePage() {
     (p) => !p.eliminated && p.id !== user?.id && !p.isMaster,
   );
 
-  // Podczas dyskusji i głosowania chowamy rolę i kolor tła, żeby gracze
-  // nie mogli odczytać roli z ekranu leżącego na stole telefonu.
-  const isPrivacyPhase = phase === 'day_deliberation' || phase === 'day_vote';
+  // Fazy rozstrzygnięcia mają własny, pełnoekranowy widok wyniku (zamiast
+  // ulotnego popupu) — trwa on tak długo, jak faza, więc gracz z wygaszonym
+  // ekranem zobaczy werdykt po odblokowaniu telefonu.
+  const isResolvePhase = phase === 'night_resolve' || phase === 'day_resolve';
+
+  // Podczas dyskusji, głosowania i rozstrzygnięć chowamy rolę i kolor tła, żeby
+  // gracze nie mogli odczytać roli z ekranu leżącego na stole telefonu.
+  const isPrivacyPhase =
+    phase === 'day_deliberation' || phase === 'day_vote' || isResolvePhase;
   const hideRoleScreen = !isMaster && isPrivacyPhase;
 
   const bgClass = isMaster
@@ -496,6 +456,14 @@ export default function GamePage() {
               </div>
             </div>
           </div>
+        ) : isResolvePhase ? (
+          /* ── Player: pełnoekranowy wynik rozstrzygnięcia ── */
+          <PhaseResultScreen
+            result={phaseResult}
+            players={players}
+            currentUserId={user?.id}
+            round={round}
+          />
         ) : (
           /* ── Player: role center + status ── */
           <div className="h-full flex flex-col items-center justify-center px-6 gap-4">
@@ -625,15 +593,6 @@ export default function GamePage() {
             )}
           </div>
         </div>
-      )}
-
-      {/* Verdict */}
-      {pendingVerdict && (
-        <VerdictReveal
-          verdict={pendingVerdict}
-          autoShow={pendingVerdict.autoShow}
-          onDismiss={() => setPendingVerdict(null)}
-        />
       )}
 
       <GameMenu
