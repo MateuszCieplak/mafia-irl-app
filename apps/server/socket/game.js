@@ -46,7 +46,7 @@ export function registerGameHandlers(io, socket, pb) {
     state.status = 'in_progress';
     state.roles = roleMap;
     state.round = 1;
-    state.phase = null;
+    state.phase = 'role_reveal';
     state.nightActions = {};
     state.votes = new Map();
     state.mafiaTargets = new Map();
@@ -57,7 +57,7 @@ export function registerGameHandlers(io, socket, pb) {
     const round = await pb.collection('rounds').create({
       room_id: state.id,
       round_number: 1,
-      phase: 'night_detective',
+      phase: 'role_reveal',
     });
     state.currentRoundId = round.id;
 

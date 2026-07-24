@@ -18,6 +18,7 @@ import { ROLE_LABELS, ROLE_COLORS, ROLE_BG } from '@/lib/roleTheme';
 
 const PHASE_FLAVOR = {
   null: 'Zapada noc…',
+  role_reveal: 'Zapoznaj się ze swoją rolą, a potem zgaś ekran telefonu.',
   night_detective: 'Detektyw sprawdza podejrzanego…',
   night_doctor: 'Lekarz chroni wybraną osobę…',
   night_mafia: 'Mafia naradza się w cieniu…',
@@ -81,6 +82,13 @@ export default function GamePage() {
   useEffect(() => {
     playersRef.current = players;
   }, [players]);
+
+  // Ten sam problem dotyczy `isMaster` — handlery night_resolved/vote_resolved
+  // muszą wiedzieć, czy odbiorcą jest master, żeby nie pokazywać mu popupu werdyktu.
+  const isMasterRef = useRef(isMaster);
+  useEffect(() => {
+    isMasterRef.current = isMaster;
+  }, [isMaster]);
 
   const loadState = useCallback(async () => {
     const res = await emit('get_game_state', {});
@@ -147,21 +155,24 @@ export default function GamePage() {
           );
           setRecentlyEliminatedId(data.eliminatedPlayerId);
           setTimeout(() => setRecentlyEliminatedId(null), 3000);
-          setPendingVerdict({
-            type: 'elimination',
-            source: 'night',
-            title: 'Rozstrzygnięcie nocy',
-            playerName: victim?.username || data.eliminatedPlayerId,
-            message: `Tej nocy zginął(a): ${victim?.username || data.eliminatedPlayerId}`,
-            autoShow: true,
-          });
-        } else {
+          // Master ma już te dane w MasterInsightFeed — popup werdyktu jest tylko dla graczy.
+          if (!isMasterRef.current) {
+            setPendingVerdict({
+              type: 'elimination',
+              source: 'night',
+              title: 'Rozstrzygnięcie nocy',
+              playerName: victim?.username || data.eliminatedPlayerId,
+              message: `Tej nocy zginął(a): ${victim?.username || data.eliminatedPlayerId}`,
+              autoShow: false,
+            });
+          }
+        } else if (!isMasterRef.current) {
           setPendingVerdict({
             type: 'safe',
             source: 'night',
             title: 'Rozstrzygnięcie nocy',
             message: 'Noc spokojna — nikt nie zginął',
-            autoShow: true,
+            autoShow: false,
           });
         }
       }),
@@ -175,14 +186,16 @@ export default function GamePage() {
           );
           setRecentlyEliminatedId(data.eliminatedPlayerId);
           setTimeout(() => setRecentlyEliminatedId(null), 3000);
-          setPendingVerdict({
-            type: 'elimination',
-            source: 'vote',
-            playerName: victim?.username || data.eliminatedPlayerId,
-            message: `Wioska wyrzuciła: ${victim?.username || data.eliminatedPlayerId}`,
-            autoShow: true,
-          });
-        } else {
+          if (!isMasterRef.current) {
+            setPendingVerdict({
+              type: 'elimination',
+              source: 'vote',
+              playerName: victim?.username || data.eliminatedPlayerId,
+              message: `Wioska wyrzuciła: ${victim?.username || data.eliminatedPlayerId}`,
+              autoShow: false,
+            });
+          }
+        } else if (!isMasterRef.current) {
           const msg =
             data.outcome === 'tie'
               ? 'Remis — nikt nie odpada'
@@ -194,7 +207,7 @@ export default function GamePage() {
             source: 'vote',
             outcome: data.outcome,
             message: msg,
-            autoShow: true,
+            autoShow: false,
           });
         }
       }),
@@ -209,9 +222,6 @@ export default function GamePage() {
       }),
       on('master_game_insight', (data) => {
         setInsightFeed((prev) => [...prev, data]);
-      }),
-      on('night_action_prompt', () => {
-        setShowActionOverlay(true);
       }),
     ];
 
@@ -325,10 +335,6 @@ export default function GamePage() {
   const waitingLabel = actionDone
     ? (ACTION_WAITING[phase] || 'Czekaj na mastera…')
     : null;
-
-  useEffect(() => {
-    if (needsAction) setShowActionOverlay(true);
-  }, [needsAction, phase]);
 
   // Wyeliminowany gracz nie powinien widzieć kokpitu akcji/głosowania.
   useEffect(() => {

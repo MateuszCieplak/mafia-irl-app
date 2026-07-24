@@ -1,6 +1,7 @@
 'use client';
 
 const PHASE_LABELS = {
+  role_reveal: { label: 'Losowanie ról', color: 'bg-white/10 text-white/70' },
   night_detective: { label: 'Noc — Detektyw', color: 'bg-blue-900/50 text-blue-300' },
   night_doctor: { label: 'Noc — Lekarz', color: 'bg-emerald-900/50 text-emerald-300' },
   night_mafia: { label: 'Noc — Mafia', color: 'bg-red-900/50 text-blood' },
