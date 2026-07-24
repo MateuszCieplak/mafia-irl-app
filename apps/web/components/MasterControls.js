@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 const PHASE_ACTIONS = {
   null: 'Rozpocznij noc',
+  role_reveal: 'Rozpocznij fazę detektywa',
   night_detective: 'Detektyw → Lekarz',
   night_doctor: 'Lekarz → Mafia',
   night_mafia: 'Mafia → Rozstrzygnięcie nocy',
@@ -15,6 +16,7 @@ const PHASE_ACTIONS = {
 
 const PHASE_QUOTES = {
   null: { icon: '🌙', text: 'Zapada noc…' },
+  role_reveal: { icon: '🎭', text: 'Gracze poznają swoje role' },
   night_detective: { icon: '🔍', text: 'Budzi się Detektyw' },
   night_doctor: { icon: '💊', text: 'Budzi się Lekarz' },
   night_mafia: { icon: '🔫', text: 'Budzi się Mafia' },
@@ -23,6 +25,10 @@ const PHASE_QUOTES = {
   day_vote: { icon: '🗳️', text: 'Głosowanie' },
   day_resolve: { icon: '⚖️', text: 'Rozstrzygnięcie głosowania' },
 };
+
+// Fazy, w których kliknięcie przycisku jest zamierzonym krokiem gry, a nie
+// pominięciem trwającej akcji — nie dodajemy do nich prefiksu „Pomiń”.
+const DELIBERATE_ADVANCE_PHASES = new Set(['role_reveal', 'night_resolve', 'day_resolve']);
 
 const ROLE_LABELS_PL = { detective: 'Detektyw', doctor: 'Lekarz', mafia: 'Mafia' };
 
@@ -148,7 +154,11 @@ export default function MasterControls({
         disabled={advancing}
         className="btn-primary w-full"
       >
-        {advancing ? 'Przechodzenie…' : `Pomiń: ${label}`}
+        {advancing
+          ? 'Przechodzenie…'
+          : DELIBERATE_ADVANCE_PHASES.has(phase)
+          ? label
+          : `Pomiń: ${label}`}
       </button>
 
       {onEndGame && (
