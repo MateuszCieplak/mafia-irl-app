@@ -24,6 +24,9 @@ export default function RoomPage() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [roleAssignments, setRoleAssignments] = useState({});
   const [roomStatus, setRoomStatus] = useState(null);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [closingRoom, setClosingRoom] = useState(false);
 
   const minPlayers = 4;
   const isMaster = useMemo(
@@ -145,6 +148,26 @@ export default function RoomPage() {
     }
   }
 
+  function handleLeaveRoom() {
+    emit('leave_room');
+    router.push('/lobby');
+  }
+
+  async function handleCloseRoom() {
+    setClosingRoom(true);
+    try {
+      const res = await emit('close_room');
+      if (res?.ok) {
+        router.push('/lobby');
+      } else {
+        alert(res?.error === 'not_master' ? 'Tylko host może zamknąć pokój.' : res?.error || 'Nie udało się zamknąć pokoju');
+      }
+    } finally {
+      setClosingRoom(false);
+      setShowCloseConfirm(false);
+    }
+  }
+
   async function handleKickPlayer(targetUserId) {
     if (!window.confirm('Usunąć tego gracza z pokoju?')) return;
     const res = await emit('kick_player', { targetUserId });
@@ -231,6 +254,16 @@ export default function RoomPage() {
     <div className="flex-1 flex flex-col">
       <div className="sticky top-0 z-10 bg-night px-4 py-3 border-b border-white/10 flex flex-wrap items-center justify-between gap-2">
         <div>
+          <button
+            type="button"
+            onClick={() => setShowLeaveConfirm(true)}
+            className="text-white/30 hover:text-white/70 transition-colors text-xs font-medium flex items-center gap-1 mb-1"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            Powrót do głównego ekranu
+          </button>
           <h2 className="font-display text-lg font-bold">Pokój</h2>
           <p className="font-mono text-2xl font-bold tracking-[0.2em] text-town">{code}</p>
           <p className="text-white/40 text-xs">{players.length} graczy w pokoju</p>
@@ -256,6 +289,13 @@ export default function RoomPage() {
                 Rozpocznij grę
               </button>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowCloseConfirm(true)}
+              className="text-red-400/70 hover:text-red-400 text-xs font-semibold transition-colors"
+            >
+              Zabij pokój
+            </button>
             {!canStartGame ? (
               <p className="text-[12px] text-white/40 text-right max-w-[14rem]">
                 {players.length < minPlayers
@@ -349,6 +389,72 @@ export default function RoomPage() {
       <div className="flex-1 min-h-0">
         <Chat channel="lobby" roomCode={code} />
       </div>
+
+      {showLeaveConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowLeaveConfirm(false)}
+            aria-label="Anuluj"
+          />
+          <div className="relative card max-w-xs w-full space-y-4 animate-popup-in text-center">
+            <h3 className="font-display text-lg font-bold">Opuścić pokój?</h3>
+            <p className="text-white/50 text-sm">
+              {isMaster
+                ? 'Pokój zostanie zachowany — możesz do niego wrócić tym samym kodem.'
+                : 'Możesz dołączyć ponownie tym samym kodem.'}
+            </p>
+            <div className="flex flex-col gap-2">
+              <button type="button" onClick={handleLeaveRoom} className="btn-primary w-full">
+                Wróć do głównego ekranu
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowLeaveConfirm(false)}
+                className="text-white/30 hover:text-white/60 text-sm py-1 transition-colors"
+              >
+                Anuluj
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCloseConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowCloseConfirm(false)}
+            aria-label="Anuluj"
+          />
+          <div className="relative card max-w-xs w-full space-y-4 animate-popup-in text-center">
+            <h3 className="font-display text-lg font-bold">Zabić pokój?</h3>
+            <p className="text-white/50 text-sm">
+              Pokój zostanie trwale zamknięty, a wszyscy gracze zostaną wyrzuceni do głównego ekranu. Tej
+              operacji nie da się cofnąć.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleCloseRoom}
+                disabled={closingRoom}
+                className="w-full px-4 py-2 rounded-lg bg-red-600/80 hover:bg-red-600 text-white text-sm font-semibold transition-colors disabled:opacity-40 disabled:pointer-events-none"
+              >
+                {closingRoom ? 'Zamykam...' : 'Zabij pokój'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCloseConfirm(false)}
+                className="text-white/30 hover:text-white/60 text-sm py-1 transition-colors"
+              >
+                Anuluj
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

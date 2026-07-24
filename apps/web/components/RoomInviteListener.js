@@ -27,9 +27,16 @@ export default function RoomInviteListener() {
       alert('Host usunął Cię z pokoju.');
     });
 
+    const offClosed = on('room_closed', () => {
+      setInvite(null);
+      router.push('/lobby');
+      alert('Host zamknął pokój.');
+    });
+
     return () => {
       offInvite?.();
       offKicked?.();
+      offClosed?.();
     };
   }, [user, connected, on, router]);
 

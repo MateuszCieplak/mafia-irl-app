@@ -264,6 +264,49 @@ export function registerLobbyHandlers(io, socket, pb) {
     }
   });
 
+  // Master zamyka pokój na stałe: wszyscy gracze są wyrzucani na główny ekran,
+  // a pokój znika z bazy, więc nie da się do niego ponownie dołączyć kodem.
+  socket.on('close_room', async (_data, callback) => {
+    try {
+      const state = rooms.get(socket.roomId);
+      if (!state || socket.userId !== state.hostId) {
+        return callback?.({ ok: false, error: 'not_master' });
+      }
+
+      for (const userId of state.players.keys()) {
+        clearDisconnectTimer(state, userId);
+        presenceClearRoom(userId);
+      }
+
+      // Do wszystkich OPRÓCZ mastera — jego przekierowanie obsłuży callback z 'close_room'.
+      socket.to(`room:${state.code}`).emit('room_closed', {});
+
+      const roomSockets = await io.in(`room:${state.code}`).fetchSockets();
+      for (const s of roomSockets) {
+        s.leave(`room:${state.code}`);
+        s.roomCode = null;
+        s.roomId = null;
+      }
+
+      rooms.delete(state.id);
+
+      await ensureAdminAuth();
+      const players = await pb.collection('room_players').getFullList({
+        filter: `room_id = "${state.id}"`,
+        requestKey: null,
+      });
+      for (const p of players) {
+        await pb.collection('room_players').delete(p.id);
+      }
+      await pb.collection('rooms').delete(state.id);
+
+      callback?.({ ok: true });
+    } catch (err) {
+      console.error('[lobby] close_room error:', err.message);
+      callback?.({ ok: false, error: err.message });
+    }
+  });
+
   socket.on('kick_player', async (data, callback) => {
     try {
       const state = rooms.get(socket.roomId);
