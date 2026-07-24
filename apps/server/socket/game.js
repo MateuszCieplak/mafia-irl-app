@@ -14,70 +14,78 @@ import {
 
 export function registerGameHandlers(io, socket, pb) {
   socket.on('start_game', async (data, callback) => {
-    const state = rooms.get(socket.roomId);
-    if (!state) return callback?.({ ok: false, error: 'no_room' });
-    if (socket.userId !== state.hostId) return callback?.({ ok: false, error: 'not_master' });
-    if (state.players.size < (state.settings?.min_players || 4)) {
-      return callback?.({ ok: false, error: 'not_enough_players' });
-    }
-
-    for (const [, p] of state.players.entries()) {
-      if (p.isBot) continue;
-      if (!p.socketId) {
-        return callback?.({ ok: false, error: 'player_offline' });
+    try {
+      const state = rooms.get(socket.roomId);
+      if (!state) return callback?.({ ok: false, error: 'no_room' });
+      if (socket.userId !== state.hostId) return callback?.({ ok: false, error: 'not_master' });
+      if (state.players.size < (state.settings?.min_players || 4)) {
+        return callback?.({ ok: false, error: 'not_enough_players' });
       }
-    }
 
-    const participantIds = Array.from(state.players.keys()).filter((id) => id !== state.hostId);
-    const roleOverrides = (data && typeof data === 'object') ? (data.roleOverrides || {}) : {};
-    const roleMap = assignRoles(participantIds, roleOverrides);
+      for (const [, p] of state.players.entries()) {
+        if (p.isBot) continue;
+        if (!p.socketId) {
+          return callback?.({ ok: false, error: 'player_offline' });
+        }
+      }
 
-    for (const [userId, role] of Object.entries(roleMap)) {
-      const rpRecords = await pb.collection('room_players').getList(1, 1, {
-        filter: `room_id = "${state.id}" && user_id = "${userId}"`,
+      const participantIds = Array.from(state.players.keys()).filter((id) => id !== state.hostId);
+      const roleOverrides = (data && typeof data === 'object') ? (data.roleOverrides || {}) : {};
+      const roleMap = assignRoles(participantIds, roleOverrides);
+
+      for (const [userId, role] of Object.entries(roleMap)) {
+        const rpRecords = await pb.collection('room_players').getList(1, 1, {
+          filter: `room_id = "${state.id}" && user_id = "${userId}"`,
+        });
+        if (rpRecords.items.length > 0) {
+          await pb.collection('room_players').update(rpRecords.items[0].id, { role });
+        }
+      }
+
+      // Rundę tworzymy PRZED przełączeniem pokoju w in_progress — gdyby zapis do PB
+      // padł (np. nieznana wartość `phase`), pokój zostaje w lobby zamiast utknąć
+      // w stanie "gra wystartowała, ale nikt nie dostał eventu game_started".
+      const round = await pb.collection('rounds').create({
+        room_id: state.id,
+        round_number: 1,
+        phase: 'role_reveal',
       });
-      if (rpRecords.items.length > 0) {
-        await pb.collection('room_players').update(rpRecords.items[0].id, { role });
+
+      await pb.collection('rooms').update(state.id, { status: 'in_progress' });
+
+      state.status = 'in_progress';
+      state.roles = roleMap;
+      state.round = 1;
+      state.phase = 'role_reveal';
+      state.nightActions = {};
+      state.votes = new Map();
+      state.mafiaTargets = new Map();
+      state.previousDoctorProtectTarget = null;
+      state.eliminatedBots = new Set();
+      state.botMemory = null;
+      state.currentRoundId = round.id;
+
+      const meta = roomEventMeta(state);
+
+      for (const [userId, pInfo] of state.players.entries()) {
+        if (userId === state.hostId) continue;
+        if (pInfo.isBot) continue;
+        const role = roleMap[userId];
+        io.to(pInfo.socketId).emit('game_started', { role, ...meta });
       }
+
+      const masterInfo = state.players.get(state.hostId);
+      if (masterInfo?.socketId) {
+        io.to(masterInfo.socketId).emit('game_started', { role: null, isMaster: true, ...meta });
+      }
+
+      emitMasterInsight(io, state, { kind: 'roles_assigned', roles: roleMap });
+
+      callback?.({ ok: true });
+    } catch (err) {
+      console.error('[game] start_game error:', err.message);
+      callback?.({ ok: false, error: err.message });
     }
-
-    await pb.collection('rooms').update(state.id, { status: 'in_progress' });
-
-    state.status = 'in_progress';
-    state.roles = roleMap;
-    state.round = 1;
-    state.phase = 'role_reveal';
-    state.nightActions = {};
-    state.votes = new Map();
-    state.mafiaTargets = new Map();
-    state.previousDoctorProtectTarget = null;
-    state.eliminatedBots = new Set();
-    state.botMemory = null;
-
-    const round = await pb.collection('rounds').create({
-      room_id: state.id,
-      round_number: 1,
-      phase: 'role_reveal',
-    });
-    state.currentRoundId = round.id;
-
-    const meta = roomEventMeta(state);
-
-    for (const [userId, pInfo] of state.players.entries()) {
-      if (userId === state.hostId) continue;
-      if (pInfo.isBot) continue;
-      const role = roleMap[userId];
-      io.to(pInfo.socketId).emit('game_started', { role, ...meta });
-    }
-
-    const masterInfo = state.players.get(state.hostId);
-    if (masterInfo?.socketId) {
-      io.to(masterInfo.socketId).emit('game_started', { role: null, isMaster: true, ...meta });
-    }
-
-    emitMasterInsight(io, state, { kind: 'roles_assigned', roles: roleMap });
-
-    callback?.({ ok: true });
   });
 
   socket.on('advance_phase', async (_, callback) => {

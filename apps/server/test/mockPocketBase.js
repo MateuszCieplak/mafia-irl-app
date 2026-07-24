@@ -37,6 +37,50 @@ function matchesFilter(record, filter) {
   return true;
 }
 
+/**
+ * Dozwolone wartości pól typu `select` — lustro schematu PocketBase
+ * (pb/pb_migrations). Prawdziwe PB odrzuca spoza listy błędem 400, więc mock
+ * też musi, inaczej testy przechodzą, a produkcja wywala się na zapisie
+ * (tak przepadła faza `role_reveal` — start_game rzucał i nikt nie dostawał
+ * eventu `game_started`).
+ */
+const SELECT_FIELD_VALUES = {
+  rooms: { status: ['lobby', 'in_progress', 'finished'] },
+  room_players: { role: ['citizen', 'detective', 'doctor', 'mafia'] },
+  rounds: {
+    phase: [
+      'role_reveal',
+      'night_detective',
+      'night_doctor',
+      'night_mafia',
+      'night_resolve',
+      'day_deliberation',
+      'day_vote',
+      'day_resolve',
+    ],
+  },
+  night_actions: { action_type: ['investigate', 'protect', 'kill'] },
+  messages: { channel: ['lobby', 'day', 'mafia_night'] },
+};
+
+function assertSelectValues(collectionName, body) {
+  const fields = SELECT_FIELD_VALUES[collectionName];
+  if (!fields || !body) return;
+  for (const [field, allowed] of Object.entries(fields)) {
+    const value = body[field];
+    // Pominięte pole i "" (czyszczenie wartości) są dozwolone, tak jak w PB.
+    if (value === undefined || value === null || value === '') continue;
+    if (!allowed.includes(value)) {
+      const err = new Error(`Invalid value ${value}.`);
+      err.status = 400;
+      err.response = {
+        data: { [field]: { code: 'validation_invalid_value', message: `Invalid value ${value}.` } },
+      };
+      throw err;
+    }
+  }
+}
+
 export function createMockPocketBase() {
   const store = {
     rooms: [],
@@ -55,6 +99,7 @@ export function createMockPocketBase() {
 
     return {
       async create(body) {
+        assertSelectValues(name, body);
         const id = body.id || nextId(name);
         const rec = {
           id,
@@ -67,6 +112,7 @@ export function createMockPocketBase() {
       },
 
       async update(id, patch) {
+        assertSelectValues(name, patch);
         const rec = items.find((r) => r.id === id);
         if (!rec) throw new Error(`mock pb: record not found ${id}`);
         Object.assign(rec, patch, { updated: new Date().toISOString() });

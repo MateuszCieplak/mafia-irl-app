@@ -34,7 +34,7 @@
     "schema": [
       { "name": "room_id", "type": "relation", "required": true, "options": { "collectionId": "rooms", "maxSelect": 1 } },
       { "name": "round_number", "type": "number", "required": true },
-      { "name": "phase", "type": "select", "required": true, "options": { "values": ["night_detective", "night_doctor", "night_mafia", "night_resolve", "day_deliberation", "day_vote", "day_resolve"] } }
+      { "name": "phase", "type": "select", "required": true, "options": { "values": ["role_reveal", "night_detective", "night_doctor", "night_mafia", "night_resolve", "day_deliberation", "day_vote", "day_resolve"] } }
     ]
   },
   {
