@@ -18,7 +18,7 @@ async function loadHistoryWithRetry(emit, channel, maxAttempts = 10, delayMs = 2
   return [];
 }
 
-export default function Chat({ channel, roomCode }) {
+export default function Chat({ channel, roomCode, readOnly = false }) {
   const { emit, on, connected } = useSocket();
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
@@ -99,19 +99,25 @@ export default function Chat({ channel, roomCode }) {
         <div ref={bottomRef} />
       </div>
 
-      <form onSubmit={handleSend} className="p-3 border-t border-white/10 flex gap-2">
-        <input
-          type="text"
-          className="input flex-1 text-sm"
-          placeholder="Napisz wiadomość..."
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          autoComplete="off"
-        />
-        <button type="submit" className="btn-primary px-4" disabled={!text.trim()}>
-          Wyślij
-        </button>
-      </form>
+      {readOnly ? (
+        <p className="px-4 py-2 border-t border-white/10 text-[12px] text-white/30 text-center">
+          Podgląd mastera — bez możliwości pisania
+        </p>
+      ) : (
+        <form onSubmit={handleSend} className="p-3 border-t border-white/10 flex gap-2">
+          <input
+            type="text"
+            className="input flex-1 text-sm"
+            placeholder="Napisz wiadomość..."
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            autoComplete="off"
+          />
+          <button type="submit" className="btn-primary px-4" disabled={!text.trim()}>
+            Wyślij
+          </button>
+        </form>
+      )}
     </div>
   );
 }

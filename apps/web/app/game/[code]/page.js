@@ -291,8 +291,10 @@ export default function GamePage() {
     (role === 'doctor' && phase === 'night_doctor') ||
     (role === 'mafia' && phase === 'night_mafia');
 
+  // Master widzi czat mafii na żywo (podgląd bez możliwości pisania) —
+  // egzekwowane też po stronie serwera w socket/chat.js.
   const chatChannel =
-    role === 'mafia' && phase === 'night_mafia' ? 'mafia_night' : null;
+    (role === 'mafia' || isMaster) && phase === 'night_mafia' ? 'mafia_night' : null;
 
   const alivePlayers = players.filter(
     (p) => !p.eliminated && p.id !== user?.id && !p.isMaster,
@@ -602,7 +604,7 @@ export default function GamePage() {
       {/* Mafia chat */}
       {chatChannel && (
         <div className="shrink-0 h-44 border-t border-white/10 bg-black/30">
-          <Chat channel={chatChannel} roomCode={code} />
+          <Chat channel={chatChannel} roomCode={code} readOnly={isMaster} />
         </div>
       )}
 

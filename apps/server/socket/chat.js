@@ -30,12 +30,16 @@ export function registerChatHandlers(io, socket, pb) {
       if (state.phase !== 'night_mafia') {
         return callback?.({ ok: false, error: 'wrong_phase' });
       }
-      const rp = await pb.collection('room_players').getList(1, 1, {
-        filter: `room_id = "${state.id}" && user_id = "${socket.userId}"`,
-        requestKey: null,
-      });
-      if (rp.items.length === 0 || rp.items[0].role !== 'mafia') {
-        return callback?.({ ok: false, error: 'forbidden' });
+      // Master widzi czat mafii na żywo (podgląd, bez możliwości pisania) —
+      // wysyłanie wiadomości jest osobno ograniczone do roli mafii w handlerze `chat_message`.
+      if (socket.userId !== state.hostId) {
+        const rp = await pb.collection('room_players').getList(1, 1, {
+          filter: `room_id = "${state.id}" && user_id = "${socket.userId}"`,
+          requestKey: null,
+        });
+        if (rp.items.length === 0 || rp.items[0].role !== 'mafia') {
+          return callback?.({ ok: false, error: 'forbidden' });
+        }
       }
     }
 
@@ -122,6 +126,11 @@ export function registerChatHandlers(io, socket, pb) {
         if (pInfo) {
           io.to(pInfo.socketId).emit('chat_message', payload);
         }
+      }
+      // Master jako podglądający — bez roli mafii, więc nie ma go w liście wyżej.
+      const masterInfo = state.players.get(state.hostId);
+      if (masterInfo && masterInfo.socketId) {
+        io.to(masterInfo.socketId).emit('chat_message', payload);
       }
     } else {
       io.to(`room:${state.code}`).emit('chat_message', payload);
