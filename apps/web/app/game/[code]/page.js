@@ -241,7 +241,20 @@ export default function GamePage() {
   }
 
   async function handleAdvancePhase() {
-    await emit('advance_phase');
+    // `from` chroni przed przeskoczeniem fazy przy podwójnym kliknięciu lub
+    // retry — serwer odrzuci żądanie, jeśli faza zdążyła się już zmienić.
+    const res = await emit('advance_phase', { from: phase });
+    // `stale_phase` / `advance_in_progress` to właśnie odrzucone duplikaty —
+    // faza już się zmieniła, więc nie ma o czym informować mastera.
+    if (!res?.ok && res?.error !== 'stale_phase' && res?.error !== 'advance_in_progress') {
+      alert(`Nie udało się zmienić fazy: ${res?.error || 'nieznany błąd'}`);
+    }
+  }
+
+  // Potwierdzenie jak w MasterControls — ekran wyniku wywołuje end_game bezpośrednio.
+  async function handleEndGameConfirmed() {
+    if (!confirm('Na pewno zakończyć rozgrywkę? Wszyscy gracze zobaczą ekran końca gry.')) return;
+    await handleEndGame();
   }
 
   async function handleEndGame() {
@@ -420,7 +433,20 @@ export default function GamePage() {
 
       {/* Center */}
       <main className="flex-1 min-h-0 overflow-hidden">
-        {isMaster ? (
+        {isMaster && isResolvePhase ? (
+          /* ── Master: ten sam ekran wyniku, ale z przyciskiem kończącym fazę ── */
+          <PhaseResultScreen
+            result={phaseResult}
+            players={players}
+            currentUserId={user?.id}
+            round={round}
+            onAdvance={handleAdvancePhase}
+            advanceLabel={
+              phase === 'night_resolve' ? 'Rozpocznij dyskusję' : 'Rozpocznij kolejną rundę'
+            }
+            onEndGame={handleEndGameConfirmed}
+          />
+        ) : isMaster ? (
           /* ── Master: two-column layout ── */
           <div className="h-full grid grid-cols-2 gap-3 p-3 overflow-hidden">
             {/* Left: controls + insight feed */}

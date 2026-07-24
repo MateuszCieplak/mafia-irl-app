@@ -1,14 +1,25 @@
 'use client';
 
+import { useState } from 'react';
+
 /**
- * Ekran rozstrzygnięcia nocy / głosowania.
+ * Ekran rozstrzygnięcia nocy / głosowania — pełnoprawna faza gry, a nie popup.
  *
- * Świadomie NIE jest popupem: wynik jest sterowany fazą gry (`night_resolve`,
- * `day_resolve`), a nie momentem dotarcia eventu. Gracz, którego telefon spał,
- * gdy master rozstrzygał noc, po odblokowaniu ekranu nadal widzi ten ekran —
- * znika dopiero, gdy master ręcznie przejdzie do dyskusji / kolejnej rundy.
+ * Wynik jest sterowany fazą (`night_resolve`, `day_resolve`), nie momentem
+ * dotarcia eventu: gracz, którego telefon spał, gdy master rozstrzygał noc, po
+ * odblokowaniu ekranu nadal go widzi. Faza kończy się wyłącznie kliknięciem
+ * mastera — dlatego master dostaje ten sam ekran z przyciskiem przejścia dalej
+ * (`onAdvance`), a nie tylko zmieniony napis w kokpicie.
  */
-export default function PhaseResultScreen({ result, players, currentUserId, round }) {
+export default function PhaseResultScreen({
+  result,
+  players,
+  currentUserId,
+  round,
+  onAdvance,
+  advanceLabel,
+  onEndGame,
+}) {
   // `phase_changed` potrafi dotrzeć ułamek sekundy przed `night_resolved`,
   // więc pokazujemy stan przejściowy zamiast migać ekranem roli.
   if (!result) {
@@ -110,19 +121,59 @@ export default function PhaseResultScreen({ result, players, currentUserId, roun
         )}
       </div>
 
-      {/* Oczekiwanie na mastera */}
-      <div className="flex flex-col items-center gap-2 mt-2">
-        <div className="flex gap-1.5">
-          {[0, 1, 2].map((i) => (
-            <span
-              key={i}
-              className="w-1.5 h-1.5 rounded-full bg-white/30 animate-pulse"
-              style={{ animationDelay: `${i * 0.2}s` }}
-            />
-          ))}
+      {/* Master kończy fazę przyciskiem; gracze czekają */}
+      {onAdvance ? (
+        <div className="w-full max-w-xs flex flex-col items-center">
+          <AdvanceButton onAdvance={onAdvance} label={advanceLabel} />
+          {onEndGame && (
+            <button
+              type="button"
+              onClick={onEndGame}
+              className="mt-3 text-xs text-blood/80 hover:text-blood underline-offset-2 hover:underline py-1"
+            >
+              Zakończ rozgrywkę
+            </button>
+          )}
         </div>
-        <p className="text-white/35 text-xs">{waitingLabel}</p>
-      </div>
+      ) : (
+        <div className="flex flex-col items-center gap-2 mt-2">
+          <div className="flex gap-1.5">
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                className="w-1.5 h-1.5 rounded-full bg-white/30 animate-pulse"
+                style={{ animationDelay: `${i * 0.2}s` }}
+              />
+            ))}
+          </div>
+          <p className="text-white/35 text-xs">{waitingLabel}</p>
+        </div>
+      )}
     </div>
+  );
+}
+
+function AdvanceButton({ onAdvance, label }) {
+  const [advancing, setAdvancing] = useState(false);
+
+  async function handleClick() {
+    if (advancing) return;
+    setAdvancing(true);
+    try {
+      await onAdvance();
+    } finally {
+      setAdvancing(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={advancing}
+      className="btn-primary mt-4 w-full max-w-xs"
+    >
+      {advancing ? 'Przechodzenie…' : label}
+    </button>
   );
 }
