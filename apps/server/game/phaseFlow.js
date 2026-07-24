@@ -204,6 +204,10 @@ export async function advancePhaseInternal(io, state, pb, callback) {
 
   const nextPhase = PHASES[nextIdx];
   state.phase = nextPhase;
+  // Wynik należy do fazy rozstrzygnięcia, nie do momentu emisji eventu — dzięki
+  // temu gracz, którego telefon spał w chwili `night_resolved`, dostanie go
+  // z `get_game_state` po obudzeniu, dopóki master nie przejdzie dalej.
+  state.phaseResult = null;
 
   if (state.currentRoundId) {
     await pb.collection('rounds').update(state.currentRoundId, { phase: nextPhase });
@@ -224,10 +228,15 @@ export async function advancePhaseInternal(io, state, pb, callback) {
     const result = await resolveNight(state, pb);
     state.previousDoctorProtectTarget = state.nightActions.doctor?.targetId ?? null;
 
-    const pubMeta = phaseMeta(state);
-    io.to(`room:${state.code}`).emit('night_resolved', {
+    state.phaseResult = {
+      kind: 'night',
       eliminatedPlayerId: result.eliminatedId,
       survivedNight: result.eliminatedId === null,
+    };
+
+    const pubMeta = phaseMeta(state);
+    io.to(`room:${state.code}`).emit('night_resolved', {
+      ...state.phaseResult,
       ...pubMeta,
     });
 
@@ -258,10 +267,15 @@ export async function advancePhaseInternal(io, state, pb, callback) {
   // w tej fazie, dopóki master ręcznie nie przejdzie dalej ("Następna runda").
   if (nextPhase === 'day_resolve') {
     const result = await resolveVotes(state, pb);
-    const pubMeta = phaseMeta(state);
-    io.to(`room:${state.code}`).emit('vote_resolved', {
+    state.phaseResult = {
+      kind: 'vote',
       eliminatedPlayerId: result.eliminatedId,
       outcome: result.outcome,
+    };
+
+    const pubMeta = phaseMeta(state);
+    io.to(`room:${state.code}`).emit('vote_resolved', {
+      ...state.phaseResult,
       ...pubMeta,
     });
 

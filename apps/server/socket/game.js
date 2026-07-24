@@ -63,6 +63,7 @@ export function registerGameHandlers(io, socket, pb) {
       state.previousDoctorProtectTarget = null;
       state.eliminatedBots = new Set();
       state.botMemory = null;
+      state.phaseResult = null;
       state.currentRoundId = round.id;
 
       const meta = roomEventMeta(state);
@@ -153,6 +154,7 @@ export function registerGameHandlers(io, socket, pb) {
       state.previousDoctorProtectTarget = null;
       state.eliminatedBots = new Set();
       state.botMemory = null;
+      state.phaseResult = null;
       state.currentRoundId = null;
 
       io.to(`room:${state.code}`).emit('room_reset_to_lobby', {
@@ -287,6 +289,9 @@ export function registerGameHandlers(io, socket, pb) {
       lastDoctorTarget: state.previousDoctorProtectTarget ?? null,
       players: allPlayers,
       roles: canSeeRoles ? state.roles : undefined,
+      // Wynik bieżącej fazy rozstrzygnięcia — pozwala odtworzyć ekran werdyktu
+      // po obudzeniu telefonu / odświeżeniu strony, zanim master przejdzie dalej.
+      phaseResult: state.phaseResult ?? null,
       ...phaseMeta(state),
     });
   });

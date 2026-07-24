@@ -126,4 +126,38 @@ describe('5. Rozwiązanie nocy i blokady wyeliminowanych', () => {
     for (const { socket } of sockets) socket.disconnect();
     clearAssignRolesForTest();
   });
+
+  it('5.4 Werdykt nocy jest w get_game_state przez całą fazę night_resolve', async () => {
+    // Gracz z wygaszonym ekranem nie odbiera eventu `night_resolved` — ekran
+    // werdyktu musi dać się odtworzyć ze stanu, dopóki trwa faza.
+    const { masterSocket, sockets, socketById } = await setupLobbyStartedWithPhaseDetective(ctx.url);
+
+    // Noc rozegrana ręcznie, bo helper przechodzi od razu do day_deliberation,
+    // a nas interesuje właśnie postój w night_resolve.
+    await submitNightAction(socketById.p01.socket, 'p06');
+    await advancePhase(masterSocket);
+    await submitNightAction(socketById.p02.socket, 'p03');
+    await advancePhase(masterSocket);
+    await submitNightAction(socketById.p03.socket, 'p05');
+    await submitNightAction(socketById.p04.socket, 'p05');
+    await advancePhase(masterSocket);
+
+    const during = await emitAck(socketById.p06.socket, 'get_game_state');
+    expect(during.phase).toBe('night_resolve');
+    expect(during.phaseResult).toEqual({
+      kind: 'night',
+      eliminatedPlayerId: 'p05',
+      survivedNight: false,
+    });
+
+    // Master ręcznie przechodzi do dyskusji — werdykt znika razem z fazą.
+    await advancePhase(masterSocket);
+    const after = await emitAck(socketById.p06.socket, 'get_game_state');
+    expect(after.phase).toBe('day_deliberation');
+    expect(after.phaseResult).toBeNull();
+
+    masterSocket.disconnect();
+    for (const { socket } of sockets) socket.disconnect();
+    clearAssignRolesForTest();
+  });
 });

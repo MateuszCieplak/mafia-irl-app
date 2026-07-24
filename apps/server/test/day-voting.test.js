@@ -121,6 +121,31 @@ describe('7. Dzień — głosowanie (9 żywych po eliminacji p05)', () => {
     clearAssignRolesForTest();
   });
 
+  it('7.1b Werdykt głosowania jest w get_game_state przez całą fazę day_resolve', async () => {
+    const { masterSocket, sockets, socketById } = await reachDayVoteAfterEliminatingP05(ctx);
+    await advancePhase(masterSocket);
+
+    for (const id of ['p01', 'p03', 'p04', 'p07', 'p08']) {
+      await submitVote(socketById[id].socket, 'p02');
+    }
+    for (const id of ['p06', 'p09', 'p10', 'p02']) {
+      await submitVote(socketById[id].socket, 'p06');
+    }
+    await advancePhase(masterSocket);
+
+    const during = await emitAck(socketById.p07.socket, 'get_game_state');
+    expect(during.phase).toBe('day_resolve');
+    expect(during.phaseResult).toEqual({
+      kind: 'vote',
+      eliminatedPlayerId: 'p02',
+      outcome: 'eliminated',
+    });
+
+    masterSocket.disconnect();
+    for (const { socket } of sockets) socket.disconnect();
+    clearAssignRolesForTest();
+  });
+
   it('7.2 Większość skip — brak eliminacji', async () => {
     const { roomId, masterSocket, sockets, socketById } = await reachDayVoteAfterEliminatingP05(ctx);
     const beforeElim = eliminatedCount(roomId);
