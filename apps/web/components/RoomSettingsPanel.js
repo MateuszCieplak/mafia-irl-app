@@ -22,27 +22,45 @@ export default function RoomSettingsPanel({ settings, onSave, saving }) {
     onSave?.(local);
   }
 
+  const timersOn = local.phase_timers_enabled === true;
+
   return (
     <form onSubmit={handleSubmit} className="card space-y-4">
       <h3 className="font-display text-sm font-bold text-white/50 uppercase tracking-wider">
         Ustawienia pokoju
       </h3>
 
-      <div className="grid grid-cols-2 gap-3">
-        {TIMER_FIELDS.map(({ key, label }) => (
-          <label key={key} className="space-y-1">
-            <span className="text-[12px] text-white/40 uppercase">{label}</span>
-            <input
-              type="number"
-              min={5}
-              max={600}
-              className="input text-sm py-2 min-h-0"
-              value={local[key] ?? ''}
-              onChange={(e) => handleChange(key, Number(e.target.value))}
-            />
-          </label>
-        ))}
-      </div>
+      <label className="flex items-center gap-2 text-sm text-white/70">
+        <input
+          type="checkbox"
+          checked={timersOn}
+          onChange={(e) => handleChange('phase_timers_enabled', e.target.checked)}
+          className="rounded"
+        />
+        Włącz timery faz
+      </label>
+
+      {timersOn ? (
+        <div className="grid grid-cols-2 gap-3">
+          {TIMER_FIELDS.map(({ key, label }) => (
+            <label key={key} className="space-y-1">
+              <span className="text-[12px] text-white/40 uppercase">{label}</span>
+              <input
+                type="number"
+                min={5}
+                max={600}
+                className="input text-sm py-2 min-h-0"
+                value={local[key] ?? ''}
+                onChange={(e) => handleChange(key, Number(e.target.value))}
+              />
+            </label>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[12px] text-white/40 leading-relaxed">
+          Bez timerów fazy przełącza wyłącznie master z kokpitu.
+        </p>
+      )}
 
       <label className="flex items-center gap-2 text-sm text-white/70">
         <input
@@ -73,6 +91,7 @@ export default function RoomSettingsPanel({ settings, onSave, saving }) {
 
 function defaultSettings() {
   return {
+    phase_timers_enabled: false,
     phase_timer_detective_sec: 30,
     phase_timer_doctor_sec: 30,
     phase_timer_mafia_sec: 120,

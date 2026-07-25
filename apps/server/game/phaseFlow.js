@@ -17,6 +17,11 @@ function autoAdvanceEnabled() {
   return process.env.MAFIA_TEST_AUTH !== '1';
 }
 
+/** Timery faz i auto-przejścia — tylko gdy master włączy je w ustawieniach pokoju. */
+export function phaseTimersEnabled(state) {
+  return state?.settings?.phase_timers_enabled === true;
+}
+
 export function clearPhaseTimer(state) {
   if (state?.phaseTimer) clearTimeout(state.phaseTimer);
   state.phaseTimer = null;
@@ -25,6 +30,8 @@ export function clearPhaseTimer(state) {
 }
 
 export function phaseDurationMs(state, phase) {
+  if (!phaseTimersEnabled(state)) return null;
+
   const s = state?.settings || {};
   const sec = (k, fallback) =>
     typeof s[k] === 'number' && Number.isFinite(s[k]) ? s[k] : fallback;
@@ -308,7 +315,11 @@ export async function advancePhaseInternal(io, state, pb, callback) {
   scheduleBotPhaseActions(io, state, pb, nextPhase);
 
   // Check if next night phase already complete (edge case)
-  if (autoAdvanceEnabled() && ['night_detective', 'night_doctor', 'night_mafia'].includes(nextPhase)) {
+  if (
+    phaseTimersEnabled(state) &&
+    autoAdvanceEnabled() &&
+    ['night_detective', 'night_doctor', 'night_mafia'].includes(nextPhase)
+  ) {
     await tryAutoAdvance(io, state, pb);
   }
 
@@ -317,6 +328,7 @@ export async function advancePhaseInternal(io, state, pb, callback) {
 
 /** Hybrid auto-advance: noc po akcjach, głosowanie po wszystkich głosach. */
 export async function tryAutoAdvance(io, state, pb) {
+  if (!phaseTimersEnabled(state)) return;
   if (!autoAdvanceEnabled()) return;
   if (state.status !== 'in_progress') return;
 

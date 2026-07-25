@@ -35,7 +35,9 @@ export function registerLobbyHandlers(io, socket, pb) {
           max_players: 15,
           doctor_can_self_protect: true,
           doctor_repeat_protect: false,
-          // Phase timers (seconds). These can be overridden from lobby settings UI.
+          // Timers off by default — master advances phases from the cockpit.
+          phase_timers_enabled: false,
+          // Phase timers (seconds). Used only when phase_timers_enabled is true.
           phase_timer_detective_sec: 30,
           phase_timer_doctor_sec: 30,
           phase_timer_mafia_sec: 120,
@@ -237,6 +239,7 @@ export function registerLobbyHandlers(io, socket, pb) {
         'max_players',
         'doctor_can_self_protect',
         'doctor_repeat_protect',
+        'phase_timers_enabled',
         'phase_timer_detective_sec',
         'phase_timer_doctor_sec',
         'phase_timer_mafia_sec',
