@@ -63,6 +63,10 @@ export default function GamePage() {
   const [showActionOverlay, setShowActionOverlay] = useState(false);
   const [actionError, setActionError] = useState(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  // Werdykt nocy przetrwuje wejście w dyskusję (phase_changed czyści phaseResult),
+  // żeby pokazać go jako nakładkę na starcie fazy dyskusji — zamykaną „Zatwierdź”.
+  const [nightVerdict, setNightVerdict] = useState(null);
+  const [showNightVerdict, setShowNightVerdict] = useState(false);
 
   const handleReturnToRoom = useCallback(() => {
     // Reset pokoju leci w tle — serwer czyści role/eliminacje gracz po graczu,
@@ -161,11 +165,15 @@ export default function GamePage() {
         setVoteStatus((prev) => ({ ...prev, [data.voterId]: new Date() }));
       }),
       on('night_resolved', (data) => {
-        setPhaseResult({
+        const verdict = {
           kind: 'night',
           eliminatedPlayerId: data.eliminatedPlayerId ?? null,
           survivedNight: data.survivedNight,
-        });
+        };
+        setPhaseResult(verdict);
+        // Osobny stan, którego phase_changed nie kasuje — źródło dla nakładki
+        // pokazywanej graczom po wejściu w dyskusję.
+        setNightVerdict(verdict);
         if (data.eliminatedPlayerId) {
           setPlayers((prev) =>
             prev.map((p) =>
@@ -208,6 +216,16 @@ export default function GamePage() {
 
     return () => offs.forEach((off) => off?.());
   }, [connected, code, emit, on, loadState]);
+
+  // Nakładka z werdyktem nocy na starcie fazy dyskusji. Dyskusja jest długa, więc
+  // gracz najpierw czyta wynik nocy na pełnym ekranie, a pod spodem już leci faza.
+  // Efekt ustawia widoczność diva na true, gdy tylko gracz wejdzie w dyskusję z
+  // gotowym werdyktem; przycisk „Zatwierdź” zmienia stan na false i div znika.
+  useEffect(() => {
+    if (phase === 'day_deliberation' && !isMaster && nightVerdict) {
+      setShowNightVerdict(true);
+    }
+  }, [phase, isMaster, nightVerdict]);
 
   const ACTION_ERRORS = {
     wrong_phase: 'Zła faza gry — spróbuj ponownie.',
@@ -605,6 +623,20 @@ export default function GamePage() {
       {chatChannel && (
         <div className="shrink-0 h-44 border-t border-white/10 bg-black/30">
           <Chat channel={chatChannel} roomCode={code} readOnly={isMaster} />
+        </div>
+      )}
+
+      {/* Werdykt nocy jako nakładka na starcie dyskusji — pod nią już trwa faza */}
+      {showNightVerdict && !isMaster && nightVerdict && (
+        <div className="fixed inset-0 z-40 bg-night animate-reveal-in">
+          <PhaseResultScreen
+            result={nightVerdict}
+            players={players}
+            currentUserId={user?.id}
+            round={round}
+            onAdvance={() => setShowNightVerdict(false)}
+            advanceLabel="Zatwierdź"
+          />
         </div>
       )}
 
