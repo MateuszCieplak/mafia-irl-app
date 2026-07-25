@@ -58,6 +58,7 @@ export default function GamePage() {
   const [phaseDeadline, setPhaseDeadline] = useState(null);
   const [detectiveHistory, setDetectiveHistory] = useState([]);
   const [lastDoctorTarget, setLastDoctorTarget] = useState(null);
+  const [roomSettings, setRoomSettings] = useState(null);
   const [phaseResult, setPhaseResult] = useState(null);
   const [recentlyEliminatedId, setRecentlyEliminatedId] = useState(null);
   const [showActionOverlay, setShowActionOverlay] = useState(false);
@@ -99,6 +100,7 @@ export default function GamePage() {
       setNightVerdict(res.lastNightResult ?? null);
       setDetectiveHistory(res.your_action_history?.detective || []);
       setLastDoctorTarget(res.lastDoctorTarget ?? null);
+      setRoomSettings(res.settings ?? null);
       // Gra już zakończona (np. odświeżenie strony po "Zakończ grę") — pokaż ekran końca gry.
       if (res.status === 'finished') {
         setGameOver({ winner: res.winner ?? null, roles: res.roles });
@@ -341,9 +343,19 @@ export default function GamePage() {
   const chatChannel =
     (role === 'mafia' || isMaster) && phase === 'night_mafia' ? 'mafia_night' : null;
 
-  const alivePlayers = players.filter(
-    (p) => !p.eliminated && p.id !== user?.id && !p.isMaster,
-  );
+  // Głosowanie / detektyw / mafia: bez siebie. Lekarz: siebie, gdy ustawienie na to pozwala.
+  const canDoctorSelfProtect = roomSettings?.doctor_can_self_protect !== false;
+  const alivePlayers = players.filter((p) => {
+    if (p.eliminated || p.isMaster) return false;
+    if (p.id === user?.id) {
+      return role === 'doctor' && phase === 'night_doctor' && canDoctorSelfProtect;
+    }
+    return true;
+  });
+  const doctorRepeatBlocked =
+    role === 'doctor' && roomSettings?.doctor_repeat_protect === false
+      ? lastDoctorTarget
+      : null;
 
   // Fazy rozstrzygnięcia mają własny, pełnoekranowy widok wyniku (zamiast
   // ulotnego popupu) — trwa on tak długo, jak faza, więc gracz z wygaszonym
@@ -690,7 +702,7 @@ export default function GamePage() {
                 onSubmit={handleNightAction}
                 disabled={actionSubmitted}
                 result={nightResult}
-                lastDoctorTarget={lastDoctorTarget}
+                doctorBlockedId={doctorRepeatBlocked}
               />
             )}
             {phase === 'day_vote' && (
