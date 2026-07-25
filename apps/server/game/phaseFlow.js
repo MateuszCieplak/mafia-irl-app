@@ -94,21 +94,24 @@ async function getAliveMafiaIds(state, pb) {
 }
 
 export async function isNightPhaseActionComplete(state, pb, phase) {
+  // Fazy nocne zostają w kokpicie mastera nawet bez żywego aktora — master
+  // przeklikuje je ręcznie (lub czeka na timer). „Ukończone” = realna akcja
+  // żywych graczy, nigdy samo „brak kogoś do zagrania”.
   if (phase === 'night_detective') {
     const detectiveId = Object.entries(state.roles || {}).find(([, r]) => r === 'detective')?.[0];
-    if (!detectiveId) return true;
-    if (await isEliminated(pb, state.id, detectiveId, state)) return true;
+    if (!detectiveId) return false;
+    if (await isEliminated(pb, state.id, detectiveId, state)) return false;
     return Boolean(state.nightActions?.detective);
   }
   if (phase === 'night_doctor') {
     const doctorId = Object.entries(state.roles || {}).find(([, r]) => r === 'doctor')?.[0];
-    if (!doctorId) return true;
-    if (await isEliminated(pb, state.id, doctorId, state)) return true;
+    if (!doctorId) return false;
+    if (await isEliminated(pb, state.id, doctorId, state)) return false;
     return Boolean(state.nightActions?.doctor);
   }
   if (phase === 'night_mafia') {
     const aliveMafia = await getAliveMafiaIds(state, pb);
-    if (aliveMafia.length === 0) return true;
+    if (aliveMafia.length === 0) return false;
     const allSubmitted = aliveMafia.every((uid) => state.mafiaTargets?.has(uid));
     if (!allSubmitted) return false;
     const targets = aliveMafia.map((uid) => state.mafiaTargets.get(uid));
@@ -314,7 +317,9 @@ export async function advancePhaseInternal(io, state, pb, callback) {
   await emitNightActionPrompts(io, state, pb);
   scheduleBotPhaseActions(io, state, pb, nextPhase);
 
-  // Check if next night phase already complete (edge case)
+  // Auto-advance tylko gdy żywi gracze faktycznie wykonali akcję — nie gdy
+  // brakuje aktora (wyeliminowany detektyw/lekarz itd.); te fazy zostają
+  // w kokpicie do ręcznego przeklikania przez mastera (lub do wygaśnięcia timera).
   if (
     phaseTimersEnabled(state) &&
     autoAdvanceEnabled() &&
