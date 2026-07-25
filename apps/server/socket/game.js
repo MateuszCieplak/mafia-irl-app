@@ -64,6 +64,7 @@ export function registerGameHandlers(io, socket, pb) {
       state.eliminatedBots = new Set();
       state.botMemory = null;
       state.phaseResult = null;
+      state.lastNightResult = null;
       state.resolveEnteredAt = null;
       state.advancing = false;
       state.currentRoundId = round.id;
@@ -196,6 +197,7 @@ export function registerGameHandlers(io, socket, pb) {
       state.eliminatedBots = new Set();
       state.botMemory = null;
       state.phaseResult = null;
+      state.lastNightResult = null;
       state.resolveEnteredAt = null;
       state.currentRoundId = null;
 
@@ -334,6 +336,9 @@ export function registerGameHandlers(io, socket, pb) {
       // Wynik bieżącej fazy rozstrzygnięcia — pozwala odtworzyć ekran werdyktu
       // po obudzeniu telefonu / odświeżeniu strony, zanim master przejdzie dalej.
       phaseResult: state.phaseResult ?? null,
+      // Werdykt ostatniej nocy przeżywa fazę dyskusji — pozwala odtworzyć
+      // nakładkę z wynikiem nocy po odświeżeniu strony w day_deliberation.
+      lastNightResult: state.lastNightResult ?? null,
       ...phaseMeta(state),
     });
   });

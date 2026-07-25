@@ -94,6 +94,9 @@ export default function GamePage() {
       // Wynik rozstrzygnięcia przychodzi ze stanu, nie tylko z eventu — dzięki
       // temu ekran werdyktu odtwarza się po obudzeniu telefonu / odświeżeniu.
       setPhaseResult(res.phaseResult ?? null);
+      // Werdykt nocy ze stanu (nie kasowany w dyskusji) — dzięki temu nakładka
+      // z wynikiem nocy odtwarza się po odświeżeniu strony w fazie dyskusji.
+      setNightVerdict(res.lastNightResult ?? null);
       setDetectiveHistory(res.your_action_history?.detective || []);
       setLastDoctorTarget(res.lastDoctorTarget ?? null);
       // Gra już zakończona (np. odświeżenie strony po "Zakończ grę") — pokaż ekran końca gry.
@@ -221,11 +224,35 @@ export default function GamePage() {
   // gracz najpierw czyta wynik nocy na pełnym ekranie, a pod spodem już leci faza.
   // Efekt ustawia widoczność diva na true, gdy tylko gracz wejdzie w dyskusję z
   // gotowym werdyktem; przycisk „Zatwierdź” zmienia stan na false i div znika.
+  //
+  // `sessionStorage` (per pokój+runda) pamięta zamknięcie: gdy telefon spał w
+  // trakcie rozstrzygnięcia, po odblokowaniu i odświeżeniu nakładka wciąż się
+  // pokaże, ale po świadomym „Zatwierdź” kolejne odświeżenia już jej nie wznowią.
+  const verdictSeenKey =
+    round != null ? `nightVerdictSeen:${code}:${round}` : null;
+
   useEffect(() => {
-    if (phase === 'day_deliberation' && !isMaster && nightVerdict) {
-      setShowNightVerdict(true);
+    if (phase !== 'day_deliberation' || isMaster || !nightVerdict) return;
+    if (verdictSeenKey && typeof window !== 'undefined') {
+      try {
+        if (sessionStorage.getItem(verdictSeenKey)) return;
+      } catch {
+        /* brak dostępu do sessionStorage — po prostu pokaż nakładkę */
+      }
     }
-  }, [phase, isMaster, nightVerdict]);
+    setShowNightVerdict(true);
+  }, [phase, isMaster, nightVerdict, verdictSeenKey]);
+
+  function dismissNightVerdict() {
+    setShowNightVerdict(false);
+    if (verdictSeenKey && typeof window !== 'undefined') {
+      try {
+        sessionStorage.setItem(verdictSeenKey, '1');
+      } catch {
+        /* brak dostępu do sessionStorage — nakładka po prostu wróci przy odświeżeniu */
+      }
+    }
+  }
 
   const ACTION_ERRORS = {
     wrong_phase: 'Zła faza gry — spróbuj ponownie.',
@@ -634,7 +661,7 @@ export default function GamePage() {
             players={players}
             currentUserId={user?.id}
             round={round}
-            onAdvance={() => setShowNightVerdict(false)}
+            onAdvance={dismissNightVerdict}
             advanceLabel="Zatwierdź"
           />
         </div>

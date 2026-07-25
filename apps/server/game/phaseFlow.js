@@ -238,6 +238,10 @@ export async function advancePhaseInternal(io, state, pb, callback) {
       eliminatedPlayerId: result.eliminatedId,
       survivedNight: result.eliminatedId === null,
     };
+    // Utrwalone poza fazą night_resolve: phaseResult jest kasowany przy wejściu
+    // w dyskusję, więc bez tego nakładka z werdyktem nocy nie dałaby się
+    // odtworzyć po odświeżeniu strony w day_deliberation (get_game_state).
+    state.lastNightResult = state.phaseResult;
 
     const pubMeta = phaseMeta(state);
     io.to(`room:${state.code}`).emit('night_resolved', {
