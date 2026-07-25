@@ -18,6 +18,13 @@ function roomCreatorEmailAllowed(socket) {
   return socket.userEmail === allowed;
 }
 
+/** Timery tylko przy jawnym `true` — stare pokoje bez klucza = wyłączone. */
+function normalizeRoomSettings(settings) {
+  const next = { ...(settings || {}) };
+  next.phase_timers_enabled = next.phase_timers_enabled === true;
+  return next;
+}
+
 export function registerLobbyHandlers(io, socket, pb) {
   socket.on('create_room', async (data, callback) => {
     if (!roomCreatorEmailAllowed(socket)) {
@@ -26,11 +33,8 @@ export function registerLobbyHandlers(io, socket, pb) {
     try {
       await ensureAdminAuth();
       const code = generateRoomCode();
-      const room = await pb.collection('rooms').create({
-        code,
-        host_id: socket.userId,
-        status: 'lobby',
-        settings: data?.settings || {
+      const roomSettings = normalizeRoomSettings(
+        data?.settings || {
           min_players: 4,
           max_players: 15,
           doctor_can_self_protect: true,
@@ -46,6 +50,12 @@ export function registerLobbyHandlers(io, socket, pb) {
           // Lobby grace period before removing a disconnected guest (ms).
           lobby_disconnect_grace_ms: 120000,
         },
+      );
+      const room = await pb.collection('rooms').create({
+        code,
+        host_id: socket.userId,
+        status: 'lobby',
+        settings: roomSettings,
       });
 
       await pb.collection('room_players').create({
@@ -60,7 +70,7 @@ export function registerLobbyHandlers(io, socket, pb) {
         code,
         hostId: socket.userId,
         status: 'lobby',
-        settings: room.settings,
+        settings: normalizeRoomSettings(room.settings),
         players: new Map([[socket.userId, { socketId: socket.id, username: socket.username }]]),
         phase: null,
         round: 0,
@@ -111,7 +121,7 @@ export function registerLobbyHandlers(io, socket, pb) {
           code,
           hostId: room.host_id,
           status: 'lobby',
-          settings: room.settings,
+          settings: normalizeRoomSettings(room.settings),
           players: new Map(),
           phase: null,
           round: 0,
@@ -139,7 +149,7 @@ export function registerLobbyHandlers(io, socket, pb) {
 
       // Keep server in-memory status/settings in sync with DB (covers restarts + rejoin).
       state.status = room.status;
-      state.settings = room.settings;
+      state.settings = normalizeRoomSettings(room.settings);
       state.hostId = room.host_id;
 
       // Rejoin = update socketId for "online" presence.
@@ -254,6 +264,8 @@ export function registerLobbyHandlers(io, socket, pb) {
           nextSettings[key] = data.settings[key];
         }
       }
+      // Jawny boolean — unikamy truthy stringów / undefined z starych pokoi.
+      nextSettings.phase_timers_enabled = nextSettings.phase_timers_enabled === true;
 
       await ensureAdminAuth();
       await pb.collection('rooms').update(state.id, { settings: nextSettings });

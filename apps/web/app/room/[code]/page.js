@@ -361,7 +361,7 @@ export default function RoomPage() {
       )}
 
       <div className="flex flex-col md:flex-row border-b border-white/10">
-        {isMaster && (
+        {isMaster && roomSettings && (
           <div className="flex-1 px-4 py-3 border-b border-white/10 md:border-b-0 md:border-r md:border-white/10">
             <RoomSettingsPanel
               settings={roomSettings}

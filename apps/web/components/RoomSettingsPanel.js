@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const TIMER_FIELDS = [
   { key: 'phase_timer_detective_sec', label: 'Detektyw (s)' },
@@ -11,7 +11,15 @@ const TIMER_FIELDS = [
 ];
 
 export default function RoomSettingsPanel({ settings, onSave, saving }) {
-  const [local, setLocal] = useState(() => ({ ...defaultSettings(), ...settings }));
+  const [local, setLocal] = useState(() => mergeSettings(settings));
+
+  // settings z serwera dochodzą asynchronicznie po montażu — bez synca panel
+  // zostawał na defaultach (timery „wyłączone”), podczas gdy serwer mógł mieć
+  // phase_timers_enabled: true i odliczanie nadal działało.
+  useEffect(() => {
+    if (!settings) return;
+    setLocal(mergeSettings(settings));
+  }, [settings]);
 
   function handleChange(key, value) {
     setLocal((prev) => ({ ...prev, [key]: value }));
@@ -99,5 +107,14 @@ function defaultSettings() {
     phase_timer_vote_sec: 60,
     doctor_repeat_protect: false,
     doctor_can_self_protect: true,
+  };
+}
+
+function mergeSettings(settings) {
+  return {
+    ...defaultSettings(),
+    ...(settings || {}),
+    // Tylko jawne `true` włącza timery — unikamy truthy stringów z JSON.
+    phase_timers_enabled: settings?.phase_timers_enabled === true,
   };
 }
