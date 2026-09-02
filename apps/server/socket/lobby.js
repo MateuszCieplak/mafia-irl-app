@@ -12,9 +12,9 @@ function clearDisconnectTimer(state, userId) {
 
 function roomCreatorEmailAllowed(socket) {
   if (process.env.MAFIA_TEST_AUTH === '1') return true;
-  const allowed = (process.env.ALLOWED_ROOM_CREATOR_EMAIL || 'm.cieplak97@gmail.com')
-    .trim()
-    .toLowerCase();
+  const allowed = (process.env.ALLOWED_ROOM_CREATOR_EMAIL || '').trim().toLowerCase();
+  // Fail closed: without a configured host email nobody may create rooms.
+  if (!allowed) return false;
   return socket.userEmail === allowed;
 }
 
