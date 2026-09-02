@@ -5,9 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/AuthContext';
 import { useSocket } from '@/lib/useSocket';
 
-const ROOM_HOST_EMAIL = (
-  process.env.NEXT_PUBLIC_ROOM_HOST_EMAIL || 'm.cieplak97@gmail.com'
-)
+const ROOM_HOST_EMAIL = (process.env.NEXT_PUBLIC_ROOM_HOST_EMAIL || '')
   .trim()
   .toLowerCase();
 
@@ -21,6 +19,8 @@ export default function LobbyPage() {
   const [error, setError] = useState('');
 
   const canCreateRoom = useMemo(() => {
+    // Fail closed: without a configured host email nobody may create rooms.
+    if (!ROOM_HOST_EMAIL) return false;
     const e = (user?.email || '').trim().toLowerCase();
     return e === ROOM_HOST_EMAIL;
   }, [user?.email]);
