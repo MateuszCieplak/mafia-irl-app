@@ -23,6 +23,45 @@ pb_schema/    — PocketBase collection schema (reference JSON)
 - **pnpm** 9.x — `corepack enable` then `corepack prepare pnpm@9.15.9 --activate`, or: `npm install -g pnpm`
 - **PocketBase** binary — download from https://pocketbase.io/docs/
 
+## 🎉 Tryb imprezowy — `pnpm party` (darmowo, z jednego komputera)
+
+Cała gra działa na komputerze na imprezie, a gracze wchodzą z telefonów przez internet
+(darmowy tunel Cloudflare — bez domeny, bez konta, bez otwierania portów na routerze).
+
+**Jednorazowo:**
+
+1. Zainstaluj [Node.js 20+](https://nodejs.org) i pnpm: `npm install -g pnpm`
+2. W katalogu repo: `pnpm install`
+3. Skopiuj `.env.example` → `.env` i ustaw co najmniej:
+   - `POCKETBASE_ADMIN_EMAIL`, `POCKETBASE_ADMIN_PASSWORD` (hasło min. 10 znaków) — konto admina bazy, tworzy się samo,
+   - `ALLOWED_ROOM_CREATOR_EMAIL` i `NEXT_PUBLIC_ROOM_HOST_EMAIL` — email konta gracza, który może zakładać pokoje (Mistrz gry).
+
+**Na imprezie:**
+
+```bash
+pnpm party
+```
+
+Skrypt sam:
+- pobiera (za pierwszym razem) PocketBase i `cloudflared` do `.tools/`,
+- tworzy bazę w `pb/pb_data/` i kolekcje gry (`pb_migrations/`), zakłada konto admina,
+- buduje frontend (tylko za pierwszym razem albo po zmianie emaila hosta; wymuszenie: `pnpm party --build`),
+- uruchamia PocketBase, serwer gry i Next.js za jednym portem `8080`,
+- otwiera tunel i wypisuje **link + kod QR** do zeskanowania telefonami.
+
+Link `https://…trycloudflare.com` jest **losowy przy każdym uruchomieniu** — po prostu wyślij nowy albo pokaż QR.
+Konta graczy zostają w `pb/pb_data/` między imprezami. Zatrzymanie: `Ctrl+C`.
+
+- **Bez internetu / słaby internet:** `pnpm party:lan` — tylko sieć Wi‑Fi, adres `http://IP-komputera:8080`
+  (pierwsze uruchomienie Windows może zapytać o zgodę zapory — zezwól dla sieci prywatnej).
+- **Panel bazy:** `http://localhost:8080/pb/_/` (login z `POCKETBASE_ADMIN_*`).
+- **Komputer nie może usnąć** w trakcie gry — wyłącz uśpienie na czas imprezy.
+- Inny port: `PARTY_PORT=9000` w `.env`. Własne binarki: `POCKETBASE_BIN`, `CLOUDFLARED_BIN`.
+
+Jak to działa: proxy w `scripts/party.mjs` kieruje `/pb/*` → PocketBase, `/socket.io/*` → serwer gry,
+resztę → Next.js. Frontend używa adresów względnych (`NEXT_PUBLIC_POCKETBASE_URL=/pb`,
+`NEXT_PUBLIC_SOCKET_URL=/`), więc zmiana adresu tunelu nie wymaga przebudowy.
+
 ## Local Development
 
 ### 1. PocketBase
