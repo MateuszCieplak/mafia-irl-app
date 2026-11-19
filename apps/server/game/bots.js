@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { processNightAction, processVote } from './actions.js';
 import { buildRoomPlayerList } from './roomPlayers.js';
+import { currentTurnActorId, prevDoctorTarget } from './turns.js';
 
 const BOT_DELAY_MIN_MS = 500;
 const BOT_DELAY_MAX_MS = 1500;
@@ -107,8 +108,9 @@ function pickDoctorTarget(state, botId, aliveIds) {
 
   let pool = aliveIds.filter((id) => id !== botId);
   if (settings.doctor_can_self_protect !== false) pool = aliveIds.slice();
-  if (settings.doctor_repeat_protect === false && state.previousDoctorProtectTarget) {
-    pool = pool.filter((id) => id !== state.previousDoctorProtectTarget);
+  const prevTarget = prevDoctorTarget(state, botId);
+  if (settings.doctor_repeat_protect === false && prevTarget) {
+    pool = pool.filter((id) => id !== prevTarget);
   }
   if (pool.length === 0) return null;
 
@@ -262,6 +264,12 @@ export function scheduleBotPhaseActions(io, state, pb, phase) {
     const expectedRole = roleForPhase[phase];
     if (!expectedRole) continue;
     if (state.roles?.[botId] !== expectedRole) continue;
+    if (
+      (expectedRole === 'detective' || expectedRole === 'doctor') &&
+      currentTurnActorId(state, expectedRole) !== botId
+    ) {
+      continue;
+    }
 
     const delay = pickDelay();
     setTimeout(() => {

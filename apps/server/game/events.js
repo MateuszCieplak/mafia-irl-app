@@ -18,12 +18,22 @@ export function notifyMasterSubmission(io, state, role, details = {}) {
   }
 }
 
+/**
+ * Wpis do „Podglądu live” mastera. Każdy wpis trafia też do `state.insightLog`
+ * (z kolejnym `seq`), żeby po odświeżeniu strony / wybudzeniu telefonu master
+ * dostał całą historię gry z get_game_state — również wpisy z czasu, gdy był offline.
+ */
 export function emitMasterInsight(io, state, payload) {
+  if (!state.insightLog) state.insightLog = [];
+  const entry = {
+    ...payload,
+    ...roomEventMeta(state),
+    seq: state.insightLog.length + 1,
+  };
+  state.insightLog.push(entry);
+
   const masterInfo = state.players.get(state.hostId);
   if (masterInfo?.socketId) {
-    io.to(masterInfo.socketId).emit('master_game_insight', {
-      ...payload,
-      ...roomEventMeta(state),
-    });
+    io.to(masterInfo.socketId).emit('master_game_insight', entry);
   }
 }

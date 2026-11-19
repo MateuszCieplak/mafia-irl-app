@@ -42,10 +42,31 @@ export function SocketProvider({ children }) {
       socket = io(SOCKET_URL, {
         auth: { token },
         transports: ['websocket', 'polling'],
+        // Szybsze ponowne łączenie (domyślnie 1 s → 5 s z losowym jitterem):
+        // po odblokowaniu telefonu liczy się każda sekunda do werdyktu.
+        reconnection: true,
+        reconnectionDelay: 250,
+        reconnectionDelayMax: 1500,
+        randomizationFactor: 0.2,
+        timeout: 6000,
       });
       socketRef.current = socket;
       socket.on('connect', () => setConnected(true));
       socket.on('disconnect', () => setConnected(false));
+      // Serwer odrzucił token — bez tego klient w nieskończoność pokazuje „Łączenie z serwerem…”.
+      // Sprawdzamy w PocketBase, czy sesja naprawdę wygasła (a nie np. chwilowo leży baza),
+      // i dopiero wtedy wylogowujemy.
+      socket.on('connect_error', async (err) => {
+        if (err?.message !== 'invalid_token') return;
+        try {
+          await pb.collection('users').authRefresh({ requestKey: null });
+        } catch (e) {
+          if (e?.status === 401 || e?.status === 403 || e?.status === 404) {
+            pb.authStore.clear();
+            window.location.assign('/login');
+          }
+        }
+      });
     }
 
     syncSocket();
@@ -106,6 +127,9 @@ export function SocketProvider({ children }) {
     s.connect();
   }, []);
 
+  /** Aktualny stan połączenia „na żywo” (bez opóźnienia re-renderu Reacta). */
+  const isConnected = useCallback(() => Boolean(socketRef.current?.connected), []);
+
   const on = useCallback((event, handler) => {
     socketRef.current?.on(event, handler);
     return () => socketRef.current?.off(event, handler);
@@ -118,8 +142,9 @@ export function SocketProvider({ children }) {
       emit,
       on,
       reconnect,
+      isConnected,
     }),
-    [connected, emit, on, reconnect]
+    [connected, emit, on, reconnect, isConnected]
   );
 
   return (

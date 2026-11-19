@@ -108,9 +108,14 @@ export async function getGameState(socket) {
 }
 
 /** Od aktualnej fazy (np. night_detective po akcji) do night_detective następnej rundy — 7× advance_phase. */
-export async function advanceCycleToNextNightDetective(masterSocket) {
+export async function advanceCycleToNextNightDetective(masterSocket, socketById = null) {
   for (let i = 0; i < 7; i++) {
-    const r = await advancePhase(masterSocket);
+    let r = await advancePhase(masterSocket);
+    // Master nie przejdzie z day_vote bez głosów wszystkich żywych — oddajemy brakujące (skip).
+    if (!r.ok && r.error === 'votes_missing' && socketById) {
+      for (const id of r.missingVoterIds) await submitVote(socketById[id].socket, null);
+      r = await advancePhase(masterSocket);
+    }
     if (!r.ok) return r;
   }
   return { ok: true };

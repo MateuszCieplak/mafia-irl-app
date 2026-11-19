@@ -51,6 +51,14 @@ export default function PlayerList({
   onKickPlayer,
   gridLayout = false,
   doctorBlockedId = null,
+  // { [playerId]: ['Ty', 'Janek'] } — znaczniki głosów mafii przy wskazanym celu.
+  voteMarkers = null,
+  // Master: gracz zabity przez mafię — animacja na jego karcie (gridLayout).
+  highlightKilledId = null,
+  // Master, faza głosowania: { [playerId]: czas } — karta pokazuje „głosuje…” / „zagłosował(a)”.
+  votingStatus = null,
+  // Master w lobby: { [playerId]: rola | '' } — pod nazwą pokazujemy przypisaną rolę.
+  roleHints = null,
 }) {
   if (gridLayout) {
     return (
@@ -65,19 +73,40 @@ export default function PlayerList({
             currentUserId &&
             player.id !== currentUserId;
 
+          const justKilled = Boolean(highlightKilledId) && player.id === highlightKilledId;
+          const isVoter = Boolean(votingStatus) && !player.isMaster && !isEliminated;
+          const hasVoted = isVoter && Boolean(votingStatus[player.id]);
+
           return (
             <div
               key={player.id}
-              className={`flex flex-col items-center gap-1.5 rounded-xl border px-3 py-3 text-center transition
+              className={`relative flex flex-col items-center gap-1.5 rounded-xl border px-3 py-3 text-center transition
+                ${justKilled ? 'animate-kill-pulse ring-2 ring-blood/70' : ''}
                 ${isEliminated ? 'opacity-30 line-through border-white/5' : 'border-white/10 bg-white/[0.04]'}
                 ${showPresence && !online && !isEliminated ? 'opacity-60' : ''}
+                ${hasVoted ? '!border-emerald-400/70 bg-emerald-500/10' : ''}
               `}
             >
+              {justKilled && (
+                <span className="absolute -top-2 -right-2 text-xl animate-scale-in" aria-hidden>
+                  💀
+                </span>
+              )}
               <PlayerAvatar player={player} showPresence={showPresence} online={online} />
 
               <span className={`text-sm font-medium truncate w-full ${showPresence && !online ? 'text-white/45' : ''}`}>
                 {labelForPlayer(player)}
               </span>
+
+              {roleHints && !player.isMaster && (
+                <span
+                  className={`text-[12px] font-semibold uppercase tracking-wide ${
+                    roleHints[player.id] ? ROLE_COLORS[roleHints[player.id]] || '' : 'text-white/35'
+                  }`}
+                >
+                  {roleHints[player.id] ? ROLE_LABELS[roleHints[player.id]] : 'Losowa'}
+                </span>
+              )}
 
               <div className="flex flex-wrap justify-center gap-1">
                 {player.isMaster && (
@@ -98,6 +127,16 @@ export default function PlayerList({
               {showRoles && player.role && (
                 <span className={`text-xs ${ROLE_COLORS[player.role] || ''}`}>
                   {ROLE_LABELS[player.role] || player.role}
+                </span>
+              )}
+
+              {isVoter && (
+                <span
+                  className={`text-[12px] font-semibold ${
+                    hasVoted ? 'text-emerald-300' : 'text-white/40 animate-pulse'
+                  }`}
+                >
+                  {hasVoted ? '✓ zagłosował(a)' : 'głosuje…'}
                 </span>
               )}
 
@@ -168,6 +207,18 @@ export default function PlayerList({
                 <span className={`text-xs ${ROLE_COLORS[player.role] || ''}`}>
                   {ROLE_LABELS[player.role] || player.role}
                 </span>
+              )}
+              {voteMarkers?.[player.id]?.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-0.5">
+                  {voteMarkers[player.id].map((label, i) => (
+                    <span
+                      key={`${label}-${i}`}
+                      className="text-[12px] bg-blood/25 text-paper-100 px-1.5 py-0.5 rounded-full"
+                    >
+                      🎯 {label}
+                    </span>
+                  ))}
+                </div>
               )}
               {isDoctorBlocked && (
                 <span className="text-[12px] text-white/35 block">Leczony ostatnio</span>

@@ -17,3 +17,7 @@ pb/*.zip
 *.log
 .DS_Store
 Thumbs.db
+
+# pnpm party
+.tools/
+.next-party/

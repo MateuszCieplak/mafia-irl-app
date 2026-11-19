@@ -57,13 +57,13 @@ describe('2. Noc — detektyw', () => {
     const { masterSocket, sockets, socketById } = await setupLobbyStartedWithPhaseDetective(ctx.url);
 
     await submitNightAction(socketById.p01.socket, 'p05');
-    await advanceCycleToNextNightDetective(masterSocket);
+    await advanceCycleToNextNightDetective(masterSocket, socketById);
 
     const rCit = await submitNightAction(socketById.p01.socket, 'p05');
     expect(rCit.ok).toBe(true);
     expect(rCit.result.is_mafia).toBe(false);
 
-    await advanceCycleToNextNightDetective(masterSocket);
+    await advanceCycleToNextNightDetective(masterSocket, socketById);
 
     const rDoc = await submitNightAction(socketById.p01.socket, 'p02');
     expect(rDoc.ok).toBe(true);
@@ -132,13 +132,13 @@ describe('2. Noc — detektyw', () => {
     const { masterSocket, sockets, socketById } = await setupLobbyStartedWithPhaseDetective(ctx.url);
 
     await submitNightAction(socketById.p01.socket, 'p03');
-    await advanceCycleToNextNightDetective(masterSocket);
+    await advanceCycleToNextNightDetective(masterSocket, socketById);
 
     await submitNightAction(socketById.p01.socket, 'p05');
-    await advanceCycleToNextNightDetective(masterSocket);
+    await advanceCycleToNextNightDetective(masterSocket, socketById);
 
     await submitNightAction(socketById.p01.socket, 'p06');
-    await advanceCycleToNextNightDetective(masterSocket);
+    await advanceCycleToNextNightDetective(masterSocket, socketById);
 
     const st = await emitAck(socketById.p01.socket, 'get_game_state');
     expect(st.ok).toBe(true);

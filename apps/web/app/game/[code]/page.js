@@ -7,18 +7,27 @@ import { useSocket } from '@/lib/useSocket';
 import GameMenu from '@/components/GameMenu';
 import TurnTimer from '@/components/TurnTimer';
 import PhaseBadge from '@/components/PhaseBadge';
-import NightActionPicker from '@/components/NightActionPicker';
+import NightActionPicker, { MafiaVotesSummary } from '@/components/NightActionPicker';
 import VotePanel from '@/components/VotePanel';
 import MasterControls from '@/components/MasterControls';
 import MasterInsightFeed from '@/components/MasterInsightFeed';
-import Chat from '@/components/Chat';
+import MafiaChatDrawer from '@/components/MafiaChatDrawer';
+import RoleCornerMenu from '@/components/RoleCornerMenu';
+import { resolveAvatarUrl } from '@/lib/avatar';
+import AnimatedModal from '@/components/AnimatedModal';
 import PhaseResultScreen from '@/components/PhaseResultScreen';
 import PlayerList from '@/components/PlayerList';
+import CardUseModal from '@/components/CardUseModal';
+import CardNightPicker from '@/components/CardNightPicker';
+import { CARD_PHASES, CARD_INFO } from '@/lib/cards';
 import { ROLE_LABELS, ROLE_COLORS, ROLE_BG } from '@/lib/roleTheme';
+import { useTransient } from '@/lib/useTransient';
 
 const PHASE_FLAVOR = {
   null: 'Zapada noc…',
   role_reveal: 'Zapoznaj się ze swoją rolą, a potem zgaś ekran telefonu.',
+  night_mafia_card: 'Budzi się mafia…',
+  night_citizen_card: 'Budzi się obywatel i wykorzystuje swoją kartę mocy.',
   night_detective: 'Detektyw sprawdza podejrzanego…',
   night_doctor: 'Lekarz chroni wybraną osobę…',
   night_mafia: 'Mafia naradza się w cieniu…',
@@ -29,17 +38,37 @@ const PHASE_FLAVOR = {
 };
 
 const ACTION_WAITING = {
+  night_mafia_card: 'Karta użyta — czekaj na mastera…',
+  night_citizen_card: 'Karta użyta — czekaj na mastera…',
   night_detective: 'Informacja przekazana masterowi…',
   night_doctor: 'Ochrona aktywna — czekaj na mastera…',
   night_mafia: 'Głos oddany — czekaj na konsensus…',
   day_vote: 'Głos oddany — czekaj na mastera…',
 };
 
+/**
+ * Łączy wpisy podglądu live z serwera i z eventów bez dubli (po `seq`) i w kolejności
+ * gry — event może przyjść w trakcie pobierania historii po odświeżeniu strony.
+ */
+function withAvatars(list) {
+  return list.map((p) => ({ ...p, avatarUrl: resolveAvatarUrl(p.avatarUrl) }));
+}
+
+function mergeInsights(a, b) {
+  const bySeq = new Map();
+  for (const e of [...(a || []), ...(b || [])]) {
+    bySeq.set(e.seq ?? `${e.timestamp}:${e.kind}`, e);
+  }
+  return Array.from(bySeq.values()).sort(
+    (x, y) => (x.seq ?? 0) - (y.seq ?? 0) || (x.timestamp ?? 0) - (y.timestamp ?? 0),
+  );
+}
+
 export default function GamePage() {
   const { code } = useParams();
   const router = useRouter();
   const { user } = useAuth();
-  const { emit, on, connected, reconnect } = useSocket();
+  const { emit, on, connected, reconnect, isConnected } = useSocket();
 
   const [phase, setPhase] = useState(null);
   const [round, setRound] = useState(0);
@@ -51,12 +80,32 @@ export default function GamePage() {
   const [voteSubmitted, setVoteSubmitted] = useState(false);
   const [submissions, setSubmissions] = useState({});
   const [voteStatus, setVoteStatus] = useState({});
+  // Na kogo oddałem głos w głosowaniu dziennym (null = pominięcie / brak głosu).
+  const [myVoteTarget, setMyVoteTarget] = useState(null);
   const [gameOver, setGameOver] = useState(null);
   const [insightFeed, setInsightFeed] = useState([]);
+  // Mafia wybrała różne cele — { votes: { mafiosoId: targetId } } albo null.
+  const [mafiaDisagreement, setMafiaDisagreement] = useState(null);
+  // Aktualne głosy żywych mafiosów { mafiosoId: targetId } (tylko dla mafii w nocy).
+  const [mafiaVotes, setMafiaVotes] = useState({});
+  // Głosowanie dzienne: na kogo głosują współmafiosi (widzi tylko mafia).
+  const [mafiaDayVotes, setMafiaDayVotes] = useState({});
+  // Id współmafiosów, którzy odpadli z gry (widzi tylko mafia).
+  const [mafiaFallen, setMafiaFallen] = useState([]);
+  // Id współmafiosów, jeśli serwer je poda (opcjonalnie) — do „jeszcze nie zagłosował”.
+  const [mafiaTeammateIds, setMafiaTeammateIds] = useState(null);
   const [stateLoaded, setStateLoaded] = useState(false);
+  // Po powrocie z tła nie pokazujemy starego ekranu roli — neutralny ekran
+  // „Synchronizuję…” do pierwszego udanego get_game_state (twardy limit ~4 s).
+  const [syncing, setSyncing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [phaseDeadline, setPhaseDeadline] = useState(null);
   const [detectiveHistory, setDetectiveHistory] = useState([]);
+  const [doctorHistory, setDoctorHistory] = useState([]);
+  // Wielu lekarzy/detektywów: bieżąca tura w fazie, moja tura i liczba tur (master).
+  const [turn, setTurn] = useState(0);
+  const [turnCount, setTurnCount] = useState(1);
+  const [myTurnIndex, setMyTurnIndex] = useState(null);
   const [lastDoctorTarget, setLastDoctorTarget] = useState(null);
   const [roomSettings, setRoomSettings] = useState(null);
   const [phaseResult, setPhaseResult] = useState(null);
@@ -68,6 +117,57 @@ export default function GamePage() {
   // żeby pokazać go jako nakładkę na starcie fazy dyskusji — zamykaną „Zatwierdź”.
   const [nightVerdict, setNightVerdict] = useState(null);
   const [showNightVerdict, setShowNightVerdict] = useState(false);
+  // Tryb zaawansowany — karty mocy (własne karty, dziennik wyników, tura nocna).
+  const [cards, setCards] = useState([]);
+  const [cardLog, setCardLog] = useState([]);
+  const [cardPrompt, setCardPrompt] = useState(null);
+  const [cardNightResult, setCardNightResult] = useState(null);
+  const [mafiaCard, setMafiaCard] = useState(null);
+  const [cardQueue, setCardQueue] = useState(null);
+  const [cardsOverview, setCardsOverview] = useState(null);
+  const [nextPhase, setNextPhase] = useState(null);
+  const [showCardModal, setShowCardModal] = useState(false);
+
+  // Podgląd roli tylko na czas przytrzymania; znika przy każdym wygaszeniu ekranu.
+  const [peekRole, setPeekRole] = useState(false);
+  useEffect(() => {
+    const hide = () => setPeekRole(false);
+    const onVis = () => document.visibilityState === 'hidden' && hide();
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pagehide', hide);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pagehide', hide);
+    };
+  }, []);
+
+  // Puszczenie palca/myszy gdziekolwiek kończy podgląd (przycisk może zniknąć lub palec zjechać).
+  useEffect(() => {
+    if (!peekRole) return;
+    const hide = () => setPeekRole(false);
+    window.addEventListener('pointerup', hide);
+    window.addEventListener('pointercancel', hide);
+    window.addEventListener('blur', hide);
+    return () => {
+      window.removeEventListener('pointerup', hide);
+      window.removeEventListener('pointercancel', hide);
+      window.removeEventListener('blur', hide);
+    };
+  }, [peekRole]);
+
+  // Zmiana fazy też kasuje podgląd, żeby rola nie została odsłonięta w nowej fazie.
+  useEffect(() => {
+    setPeekRole(false);
+  }, [phase]);
+
+  const isMasterRef = useRef(false);
+  isMasterRef.current = isMaster;
+
+  // Neutralny ekran „Synchronizuję…” jest już na wierzchu → można zdjąć zasłonę
+  // postawioną przy wygaszeniu ekranu (patrz efekt z visibilitychange).
+  useEffect(() => {
+    if (syncing) delete document.documentElement.dataset.privacyCover;
+  }, [syncing]);
 
   const handleReturnToRoom = useCallback(() => {
     // Reset pokoju leci w tle — serwer czyści role/eliminacje gracz po graczu,
@@ -89,7 +189,7 @@ export default function GamePage() {
       setPhase(res.phase);
       setRound(res.round);
       setRole(res.role);
-      setPlayers(res.players || []);
+      setPlayers(withAvatars(res.players || []));
       setIsMaster(res.isMaster || res.players?.some((p) => p.id === user?.id && p.isMaster));
       setPhaseDeadline(res.phaseDeadline ?? null);
       // Wynik rozstrzygnięcia przychodzi ze stanu, nie tylko z eventu — dzięki
@@ -99,8 +199,43 @@ export default function GamePage() {
       // z wynikiem nocy odtwarza się po odświeżeniu strony w fazie dyskusji.
       setNightVerdict(res.lastNightResult ?? null);
       setDetectiveHistory(res.your_action_history?.detective || []);
+      setDoctorHistory(res.your_action_history?.doctor || []);
+      setTurn(res.turn ?? 0);
+      setTurnCount(res.turnCount ?? 1);
+      setMyTurnIndex(res.myTurnIndex ?? null);
       setLastDoctorTarget(res.lastDoctorTarget ?? null);
       setRoomSettings(res.settings ?? null);
+      setNextPhase(res.nextPhase ?? null);
+      setCards(res.cards ?? []);
+      setCardLog(res.cardLog ?? []);
+      setCardPrompt(res.cardPrompt ?? null);
+      setMafiaCard(res.mafiaCard ?? null);
+      setCardQueue(res.cardQueue ?? null);
+      setCardsOverview(res.cardsOverview ?? null);
+      // Stan „akcja/głos złożony” bierzemy z serwera — po wygaszeniu ekranu
+      // `phase_changed` mogło przepaść i lokalna flaga z poprzedniej nocy
+      // blokowałaby wybór celu w nowej.
+      setActionSubmitted(Boolean(res.nightActionSubmitted));
+      setVoteSubmitted(Boolean(res.voteSubmitted));
+      setMyVoteTarget(res.myVoteTarget ?? null);
+      // Master: kto już zagłosował — bez tego po odświeżeniu wszystkie karty wracały do „głosuje…”.
+      if (Array.isArray(res.votedPlayerIds)) {
+        const now = new Date();
+        setVoteStatus(Object.fromEntries(res.votedPlayerIds.map((id) => [id, now])));
+      }
+      setMafiaDisagreement(res.mafiaDisagreement ? { votes: res.mafiaVotes || {} } : null);
+      setMafiaVotes(res.mafiaVotes || {});
+      setMafiaDayVotes(res.mafiaDayVotes || {});
+      setMafiaFallen(res.mafiaFallen || []);
+      const mates = res.mafiaTeammates ?? res.mafiaTeammateIds;
+      setMafiaTeammateIds(
+        Array.isArray(mates) ? mates.map((m) => (typeof m === 'string' ? m : m?.id)).filter(Boolean) : null,
+      );
+      // Historia „Podglądu live” mastera trzymana na serwerze — po odświeżeniu
+      // strony odtwarzamy ją w całości (łącznie z wpisami z czasu bycia offline).
+      if (Array.isArray(res.insightLog)) {
+        setInsightFeed((prev) => mergeInsights(res.insightLog, prev));
+      }
       // Gra już zakończona (np. odświeżenie strony po "Zakończ grę") — pokaż ekran końca gry.
       if (res.status === 'finished') {
         setGameOver({ winner: res.winner ?? null, roles: res.roles });
@@ -108,6 +243,8 @@ export default function GamePage() {
     }
     initialLoadDone.current = true;
     setStateLoaded(true);
+    // Pierwszy udany stan kończy ekran „Synchronizuję…” — od razu widać werdykt.
+    if (res?.ok) setSyncing(false);
     return Boolean(res?.ok);
   }, [emit, user?.id]);
 
@@ -117,19 +254,66 @@ export default function GamePage() {
   // gdy nie odpowie, restartujemy połączenie; wtedy efekt na `connected`
   // wykona join_room i pełne odświeżenie.
   useEffect(() => {
-    async function resync() {
+    let hiddenAt = null;
+    let syncTimer = null;
+
+    function endSyncLater() {
+      clearTimeout(syncTimer);
+      // Twardy limit: po ~4 s pokazujemy dane takie, jakie są.
+      syncTimer = setTimeout(() => setSyncing(false), 4000);
+    }
+
+    async function resync(e) {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now();
+        // Zasłona stawiana SYNCHRONICZNIE przy wygaszaniu (bez renderu Reacta):
+        // przeglądarka po odblokowaniu najpierw pokazuje zamrożoną ostatnią klatkę
+        // (z rolą), a dopiero potem wykonuje JS. Zasłona jest już w tej klatce.
+        if (!isMasterRef.current) document.documentElement.dataset.privacyCover = '1';
+        return;
+      }
       if (document.visibilityState !== 'visible') return;
-      const ok = await loadState({ timeoutMs: 3000 });
+      // pageshow z bfcache (persisted) = strona była zamrożona; zwykły pageshow
+      // przy pierwszym ładowaniu obsługuje efekt na `connected`.
+      const wasHidden = hiddenAt !== null || e?.persisted === true;
+      if (!wasHidden) {
+        delete document.documentElement.dataset.privacyCover;
+        return;
+      }
+      const hiddenMs = hiddenAt !== null ? Date.now() - hiddenAt : Infinity;
+      hiddenAt = null;
+
+      // Dłuższa nieobecność → neutralny ekran zamiast starej roli/stanu.
+      // Zasłonę zdejmuje efekt na `syncing` dopiero, gdy neutralny ekran jest
+      // wyrenderowany (bez „mignięcia” starej roli między jednym a drugim).
+      if (hiddenMs > 1000) {
+        setSyncing(true);
+        endSyncLater();
+      } else {
+        delete document.documentElement.dataset.privacyCover;
+      }
+
+      if (!isConnected()) {
+        // Socket martwy — łączymy od razu; efekt na `connected` zrobi join_room +
+        // loadState (i zdejmie ekran synchronizacji).
+        reconnect();
+        return;
+      }
+      // Socket „żyje” według klienta — sprawdzamy to krótkim get_game_state;
+      // brak odpowiedzi = zombie, restartujemy połączenie.
+      const ok = await loadState({ timeoutMs: 1300 });
       if (!ok) reconnect();
     }
 
     document.addEventListener('visibilitychange', resync);
     window.addEventListener('pageshow', resync);
     return () => {
+      delete document.documentElement.dataset.privacyCover;
+      clearTimeout(syncTimer);
       document.removeEventListener('visibilitychange', resync);
       window.removeEventListener('pageshow', resync);
     };
-  }, [loadState, reconnect]);
+  }, [loadState, reconnect, isConnected]);
 
   useEffect(() => {
     if (!connected) return;
@@ -147,27 +331,54 @@ export default function GamePage() {
     const offs = [
       on('game_started', (data) => {
         setRole(data.role);
+        setCards(data.cards ?? []);
       }),
       on('phase_changed', (data) => {
         setPhase(data.phase);
+        setTurn(data.turn ?? 0);
+        setTurnCount(data.turnCount ?? 1);
         setRound(data.round);
         setPhaseDeadline(data.phaseDeadline ?? null);
+        setNextPhase(data.nextPhase ?? null);
+        setCardPrompt(null);
+        setCardNightResult(null);
+        setShowCardModal(false);
         setActionSubmitted(false);
         setVoteSubmitted(false);
+        setMyVoteTarget(null);
         setNightResult(undefined);
         setSubmissions({});
+        setMafiaDisagreement(null);
+        setMafiaVotes({});
+        setMafiaDayVotes({});
         setVoteStatus({});
         setShowActionOverlay(false);
         // Wynik należy do fazy rozstrzygnięcia — serwer emituje `phase_changed`
         // tuż przed `night_resolved`/`vote_resolved`, więc czyszczenie tutaj
         // kasuje poprzedni werdykt, a nowy zaraz go zastąpi.
         setPhaseResult(null);
+        // Start nocy lekarza: odśwież „ostatnio leczony(a)” (blokada powtórki).
+        if (data.phase === 'night_doctor' || data.phase === 'night_mafia') loadState();
+        // Tura karty: prompt (cele, typ karty) przychodzi ze stanu — odśwież po wejściu w fazę.
+        if (CARD_PHASES.includes(data.phase) || data.phase === 'day_vote') loadState();
+      }),
+      // Master: ktoś zgłosił użycie karty — odśwież kolejkę i przegląd kart.
+      on('card_queue_update', (data) => {
+        setCardQueue(data);
+        loadState();
       }),
       on('night_action_submitted', (data) => {
         setSubmissions((prev) => ({ ...prev, [data.role]: data }));
       }),
       on('vote_submitted', (data) => {
         setVoteStatus((prev) => ({ ...prev, [data.voterId]: new Date() }));
+      }),
+      on('vote_retracted', (data) => {
+        setVoteStatus((prev) => {
+          const next = { ...prev };
+          delete next[data.voterId];
+          return next;
+        });
       }),
       on('night_resolved', (data) => {
         const verdict = {
@@ -212,15 +423,41 @@ export default function GamePage() {
         );
       }),
       on('player_joined', (data) => {
-        setPlayers(data.players);
+        // Event nie niesie avatarów — zachowujemy te, które już znamy.
+        setPlayers((prev) => {
+          const known = new Map(prev.map((p) => [p.id, p.avatarUrl]));
+          return withAvatars(
+            (data.players || []).map((p) => ({ ...p, avatarUrl: p.avatarUrl ?? known.get(p.id) ?? null })),
+          );
+        });
+      }),
+      // Mafia: po każdym głosie wspólnika. Brak jednomyślności → odblokuj ponowny wybór.
+      on('mafia_vote_update', (data) => {
+        const votes = data.votes || {};
+        setMafiaVotes(votes);
+        if (data.waitingForConsensus) {
+          setMafiaDisagreement({ votes });
+        } else {
+          setMafiaDisagreement(null);
+        }
+        // „Złożony” = mam aktywny głos i nie ma niezgody (jak na serwerze).
+        // Cofnięty głos (brak klucza) albo niezgoda odblokowują ponowny wybór.
+        if (user?.id) {
+          setActionSubmitted(Boolean(votes[user.id]) && !data.waitingForConsensus);
+        } else if (data.waitingForConsensus) {
+          setActionSubmitted(false);
+        }
+      }),
+      on('mafia_day_votes', (data) => {
+        setMafiaDayVotes(data.votes || {});
       }),
       on('master_game_insight', (data) => {
-        setInsightFeed((prev) => [...prev, data]);
+        setInsightFeed((prev) => mergeInsights(prev, [data]));
       }),
     ];
 
     return () => offs.forEach((off) => off?.());
-  }, [connected, code, emit, on, loadState]);
+  }, [connected, code, emit, on, loadState, user?.id]);
 
   // Nakładka z werdyktem nocy na starcie fazy dyskusji. Dyskusja jest długa, więc
   // gracz najpierw czyta wynik nocy na pełnym ekranie, a pod spodem już leci faza.
@@ -269,13 +506,41 @@ export default function GamePage() {
     no_action: 'Twoja rola nie ma akcji nocnych.',
     not_connected: 'Brak połączenia — odśwież stronę.',
     timeout: 'Serwer nie odpowiedział. Spróbuj ponownie.',
+    not_mafia: 'Tylko mafia może cofnąć głos.',
+    no_vote: 'Nie masz głosu do cofnięcia.',
+    nothing_to_retract: 'Nie masz głosu do cofnięcia.',
+    no_room: 'Nie znaleziono pokoju — odśwież stronę.',
   };
+
+  async function handleRetractVote() {
+    setActionError(null);
+    const res = await emit('mafia_retract_vote', {});
+    if (res?.ok) {
+      setActionSubmitted(false);
+      setMafiaVotes((prev) => {
+        const next = { ...prev };
+        if (user?.id) delete next[user.id];
+        return next;
+      });
+    } else {
+      setActionError(ACTION_ERRORS[res?.error] || `Nie udało się cofnąć głosu: ${res?.error || 'brak połączenia'}`);
+    }
+  }
 
   async function handleNightAction(targetId) {
     setActionError(null);
     const res = await emit('night_action', { targetId });
     if (res?.ok) {
-      setActionSubmitted(true);
+      if (role === 'mafia') {
+        // Czy głos jest „złożony”, rozstrzyga `mafia_vote_update` (przy niezgodzie
+        // wybór zostaje odblokowany) — nie nadpisujemy tego tutaj.
+        if (user?.id) setMafiaVotes((prev) => ({ ...prev, [user.id]: targetId }));
+      } else {
+        setActionSubmitted(true);
+      }
+      if (role === 'doctor') {
+        setDoctorHistory((prev) => [...prev, { targetId }]);
+      }
       if (res.result) {
         setNightResult(res.result);
         setDetectiveHistory((prev) => [...prev, { targetId, result: res.result }]);
@@ -294,6 +559,7 @@ export default function GamePage() {
     const res = await emit('vote', { targetId });
     if (res?.ok) {
       setVoteSubmitted(true);
+      setMyVoteTarget(targetId ?? null);
       setShowActionOverlay(false);
     } else {
       const msgs = {
@@ -308,13 +574,56 @@ export default function GamePage() {
     }
   }
 
+  async function handleRetractDayVote() {
+    setActionError(null);
+    const res = await emit('retract_vote', {});
+    if (res?.ok) {
+      setVoteSubmitted(false);
+      setMyVoteTarget(null);
+    } else {
+      setActionError(ACTION_ERRORS[res?.error] || `Nie udało się cofnąć głosu: ${res?.error || 'brak połączenia'}`);
+    }
+  }
+
+  async function handleDeclareCard(type) {
+    const res = await emit('card_declare', { type });
+    if (res?.ok) loadState();
+    return res;
+  }
+
+  async function handleCardNightAction(payload) {
+    setActionError(null);
+    const res = await emit('card_night_action', payload);
+    if (res?.ok) {
+      setCardNightResult(res.result ?? { done: true });
+      if (res.result) {
+        setCardLog((prev) => [
+          ...prev,
+          { kind: 'check', round, targetIds: res.result.targetIds, count: res.result.count },
+        ]);
+      }
+    } else {
+      const msgs = {
+        wrong_phase: 'Zła faza gry.',
+        not_your_turn: 'To nie Twoja tura.',
+        already_acted: 'Karta została już użyta.',
+        invalid_targets: 'Wybierz dokładnie wymaganą liczbę graczy.',
+        invalid_target: 'Nieprawidłowy cel.',
+        eliminated: 'Jesteś wyeliminowany(a).',
+        no_queued_card: 'Ta karta nie została zgłoszona.',
+      };
+      setActionError(msgs[res?.error] || `Błąd: ${res?.error || 'brak połączenia'}`);
+    }
+    return res;
+  }
+
   async function handleAdvancePhase() {
     // `from` chroni przed przeskoczeniem fazy przy podwójnym kliknięciu lub
     // retry — serwer odrzuci żądanie, jeśli faza zdążyła się już zmienić.
-    const res = await emit('advance_phase', { from: phase });
+    const res = await emit('advance_phase', { from: phase, fromTurn: turn });
     // Odrzucone duplikaty (podwójny tap / retry) nie są błędem — faza albo już
     // się zmieniła, albo trwa minimalny czas rozstrzygnięcia. Nie alarmujemy.
-    const ignored = ['stale_phase', 'advance_in_progress', 'resolve_too_soon'];
+    const ignored = ['stale_phase', 'advance_in_progress', 'resolve_too_soon', 'votes_missing'];
     if (!res?.ok && !ignored.includes(res?.error)) {
       alert(`Nie udało się zmienić fazy: ${res?.error || 'nieznany błąd'}`);
     }
@@ -333,10 +642,16 @@ export default function GamePage() {
     }
   }
 
+  // Z kilkoma detektywami/lekarzami każdy ma własną turę w fazie.
+  const isMyTurn = myTurnIndex == null || turn === myTurnIndex;
   const isNightPhaseForRole =
-    (role === 'detective' && phase === 'night_detective') ||
-    (role === 'doctor' && phase === 'night_doctor') ||
+    (role === 'detective' && phase === 'night_detective' && isMyTurn) ||
+    (role === 'doctor' && phase === 'night_doctor' && isMyTurn) ||
     (role === 'mafia' && phase === 'night_mafia');
+
+  // Tura karty (Sprawdzenie / karta mafii) — prompt z serwera tylko dla gracza, który ma teraz ruch.
+  const isCardTurn = Boolean(cardPrompt) && CARD_PHASES.includes(phase);
+  const advancedMode = roomSettings?.advanced_mode === true;
 
   // Master widzi czat mafii na żywo (podgląd bez możliwości pisania) —
   // egzekwowane też po stronie serwera w socket/chat.js.
@@ -368,9 +683,15 @@ export default function GamePage() {
     phase === 'day_deliberation' || phase === 'day_vote' || isResolvePhase;
   const hideRoleScreen = !isMaster && isPrivacyPhase;
 
+  // Rola (tekst i kolor tła) jest widoczna wyłącznie w fazie „role_reveal” albo
+  // dopóki gracz przytrzymuje przycisk podglądu. W każdej innej fazie ekran jest
+  // neutralny — dzięki temu zamrożona klatka po odblokowaniu telefonu (której nie
+  // da się przykryć z poziomu strony) nigdy nie zawiera roli.
+  const maskRole = !isMaster && phase !== 'role_reveal' && !peekRole;
+
   const bgClass = isMaster
     ? ROLE_BG.master
-    : hideRoleScreen
+    : hideRoleScreen || maskRole
     ? 'bg-night'
     : ROLE_BG[role] || 'bg-night';
   const roleColorClass = ROLE_COLORS[role] || 'text-white';
@@ -384,17 +705,109 @@ export default function GamePage() {
     !isMaster &&
     !isEliminated &&
     ((isNightPhaseForRole && !actionSubmitted) ||
+      (isCardTurn && !cardNightResult) ||
       (phase === 'day_vote' && !voteSubmitted));
 
   const actionDone =
     !isMaster &&
     !isEliminated &&
     ((isNightPhaseForRole && actionSubmitted) ||
+      (isCardTurn && Boolean(cardNightResult)) ||
       (phase === 'day_vote' && voteSubmitted));
+
+  const showMafiaDisagreement =
+    role === 'mafia' && phase === 'night_mafia' && !isEliminated && Boolean(mafiaDisagreement);
+  const nameOf = (id) => players.find((p) => p.id === id)?.username || '—';
+  const mafiaDisagreementBanner = showMafiaDisagreement ? (
+    <div className="card bg-flame-500/30 border border-blood/40 text-paper-100 text-sm py-3 px-3 space-y-1">
+      <p className="font-semibold">⚠ Brak jednomyślnego wyroku</p>
+      <p>Mafia wybrała różne cele. Uzgodnijcie jeden cel na czacie i wybierzcie ponownie.</p>
+    </div>
+  ) : null;
+
+  // Głosy mafii widoczne przez całą noc mafii (nie tylko przy niezgodzie).
+  const showMafiaVotes =
+    role === 'mafia' && (phase === 'night_mafia' || phase === 'day_vote') && !isEliminated;
+  const mafiaVotesSummary = showMafiaVotes ? (
+    <MafiaVotesSummary
+      votes={phase === 'day_vote' ? mafiaDayVotes : mafiaVotes}
+      currentUserId={user?.id}
+      teammateIds={mafiaTeammateIds}
+      nameOf={nameOf}
+      className="card py-3 px-3"
+    />
+  ) : null;
+
+  // Dolny przycisk akcji: „Wykonaj” (noc) / „Głosuj” / „Zmień głos” (mafia po złożeniu).
+  const mafiaCanChange =
+    (role === 'mafia' && phase === 'night_mafia' && actionDone) ||
+    (phase === 'day_vote' && voteSubmitted && actionDone);
+  const showActionButton =
+    !isMaster && !isEliminated && (needsAction || mafiaCanChange);
+  const actionButtonLabel = showActionOverlay
+    ? 'Zamknij'
+    : mafiaCanChange
+    ? 'Zmień głos'
+    : isCardTurn
+    ? 'Użyj karty'
+    : isNightPhaseForRole
+    ? 'Wykonaj'
+    : 'Głosuj';
+  const ACTION_ICONS = { detective: '🔍', doctor: '💉', mafia: '🎯' };
+  const actionButtonIcon = showActionOverlay
+    ? '✕'
+    : isCardTurn
+    ? '🃏'
+    : mafiaCanChange || isNightPhaseForRole
+    ? ACTION_ICONS[role] || '▶'
+    : '🗳️';
+  // Ikona roli w prawym dolnym rogu — tylko tam, gdzie rola jest widoczna na ekranie.
+  const showCornerMenu =
+    !isMaster && !isEliminated && !hideRoleScreen && ['detective', 'doctor', 'mafia'].includes(role);
+
+  // Wysokość dolnego panelu — nakładka akcji kończy się nad nim.
+  const [bottomH, setBottomH] = useState(0);
+  const bottomObserver = useRef(null);
+  const bottomRef = useCallback((node) => {
+    bottomObserver.current?.disconnect();
+    bottomObserver.current = null;
+    if (!node) {
+      setBottomH(0);
+      return;
+    }
+    const update = () => setBottomH(node.offsetHeight);
+    update();
+    if (typeof ResizeObserver !== 'undefined') {
+      bottomObserver.current = new ResizeObserver(update);
+      bottomObserver.current.observe(node);
+    }
+  }, []);
+
+  // Nocna tura mafii: kto ze współmafiosów już nie żyje (np. wyrzucony w głosowaniu).
+  const fallenMafia =
+    role === 'mafia' && phase === 'night_mafia' && !isEliminated
+      ? mafiaFallen.filter((id) => id !== user?.id)
+      : [];
+  const mafiaFallenNotice =
+    fallenMafia.length > 0 ? (
+      <div className="card py-3 px-3 text-sm text-paper-100/80">
+        <p className="font-semibold">
+          ☠ {fallenMafia.length === 1 ? 'Nie ma już w grze mafiosa' : 'Nie ma już w grze mafiosów'}:
+        </p>
+        <p className="text-white/60">{fallenMafia.map((id) => nameOf(id)).join(', ')}</p>
+      </div>
+    ) : null;
 
   const waitingLabel = actionDone
     ? (ACTION_WAITING[phase] || 'Czekaj na mastera…')
     : null;
+
+  // Komunikaty po akcji (lekarz, detektyw, mafia, głos) są chwilowe — stałe
+  // informacje gracz ma w dzienniku, a po odblokowaniu ekranu nie mają wisieć.
+  const showWaiting = useTransient(
+    actionDone && waitingLabel ? `${round}:${phase}:${turn}:${String(nightResult?.is_mafia)}` : null,
+    6000,
+  );
 
   // Wyeliminowany gracz nie powinien widzieć kokpitu akcji/głosowania.
   useEffect(() => {
@@ -405,6 +818,25 @@ export default function GamePage() {
     return (
       <div className="flex-1 flex items-center justify-center bg-night">
         <p className="text-white/40 text-sm animate-pulse">Ładowanie stanu gry…</p>
+      </div>
+    );
+  }
+
+  // Powrót z tła: zamiast nieaktualnej roli (prywatność + mylący stan) pokazujemy
+  // neutralny ekran, dopóki nie dojdzie świeży stan z serwera.
+  if (syncing) {
+    return (
+      <div className="h-dvh flex flex-col items-center justify-center gap-3 bg-night" role="status">
+        <div className="flex gap-1.5">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="w-1.5 h-1.5 rounded-full bg-white/30 animate-pulse"
+              style={{ animationDelay: `${i * 0.2}s` }}
+            />
+          ))}
+        </div>
+        <p className="text-white/30 text-xs">Synchronizuję…</p>
       </div>
     );
   }
@@ -466,7 +898,7 @@ export default function GamePage() {
           <button
             type="button"
             onClick={() => router.push('/lobby')}
-            className="flex-1 px-4 py-2 rounded-lg border border-white/20 text-white/70 hover:text-white hover:border-white/40 text-sm font-semibold transition-colors text-center"
+            className="btn-ghost flex-1 text-center"
           >
             Strona główna
           </button>
@@ -480,7 +912,7 @@ export default function GamePage() {
   return (
     <div className={`h-dvh overflow-hidden flex flex-col ${bgClass}`}>
       {/* Top — logo M + leave button */}
-      <header className="shrink-0 flex items-center justify-between px-4 pt-4 pb-1">
+      <header className="shrink-0 flex items-center justify-between px-4 pt-3 pb-2 border-b border-brass-500/15">
         <button
           type="button"
           onClick={() => setShowLeaveConfirm(true)}
@@ -513,7 +945,10 @@ export default function GamePage() {
       </header>
 
       {/* Center */}
-      <main className="flex-1 min-h-0 overflow-hidden">
+      <main
+        key={isMaster ? 'master' : phase ?? 'none'}
+        className={`flex-1 min-h-0 overflow-hidden ${isMaster ? '' : 'animate-phase-fade'}`}
+      >
         {isMaster && isResolvePhase ? (
           /* ── Master: ten sam ekran wyniku, ale z przyciskiem kończącym fazę ── */
           <PhaseResultScreen
@@ -535,9 +970,16 @@ export default function GamePage() {
               <div className="shrink-0">
                 <MasterControls
                   phase={phase}
+                  round={round}
+                  turn={turn}
+                  turnCount={turnCount}
+                  phaseDeadline={phaseDeadline}
                   submissions={submissions}
                   voteStatus={voteStatus}
                   players={players}
+                  nextPhase={nextPhase}
+                  cardQueue={cardQueue}
+                  cardsOverview={cardsOverview}
                   onAdvance={handleAdvancePhase}
                   onEndGame={handleEndGame}
                 />
@@ -549,18 +991,37 @@ export default function GamePage() {
             </div>
 
             {/* Right: player list with roles */}
-            <div className="flex flex-col gap-2 min-h-0 overflow-hidden">
+            <div className="relative flex flex-col gap-2 min-h-0">
               <div className="flex items-center gap-2 shrink-0">
-                <h3 className="font-display text-sm font-bold text-white/50 uppercase tracking-wider">
+                <h3 className="section-eyebrow">
                   Gracze
                 </h3>
                 <span className="text-[12px] text-white/30">
-                  {players.filter((p) => !p.eliminated).length} żywych / {players.length}
+                  {players.filter((p) => !p.isMaster && !p.eliminated).length} żywych /{' '}
+                  {players.filter((p) => !p.isMaster).length}
                 </span>
               </div>
               <div className="flex-1 overflow-y-auto min-h-0">
-                <PlayerList players={players} showRoles gridLayout />
+                <PlayerList
+                  players={players.filter((p) => !p.isMaster)}
+                  showRoles
+                  gridLayout
+                  highlightKilledId={
+                    phase === 'day_deliberation' ? nightVerdict?.eliminatedPlayerId ?? null : null
+                  }
+                  votingStatus={phase === 'day_vote' ? voteStatus : null}
+                />
               </div>
+              {chatChannel && (
+                <MafiaChatDrawer
+                  channel={chatChannel}
+                  roomCode={code}
+                  readOnly
+                  label="Dziupla Mafii — podgląd"
+                  className="shrink-0"
+                  panelClassName="h-[60%] min-h-[12rem]"
+                />
+              )}
             </div>
           </div>
         ) : isResolvePhase ? (
@@ -574,22 +1035,64 @@ export default function GamePage() {
         ) : (
           /* ── Player: role center + status ── */
           <div className="h-full flex flex-col items-center justify-center px-6 gap-4">
-            {hideRoleScreen ? (
+            {hideRoleScreen || maskRole ? (
               <>
-                <p className="text-white/40 text-xs uppercase tracking-[0.25em]">Runda {round}</p>
-                <h1 className="font-display text-5xl sm:text-6xl font-bold capitalize text-white">
-                  {roundTitleLabel}
+                <p className="section-eyebrow !tracking-[0.3em]">Runda {round}</p>
+                <h1 className="font-display text-[clamp(1.75rem,11vw,3.75rem)] max-w-full text-center leading-tight font-bold capitalize text-white">
+                  {hideRoleScreen ? roundTitleLabel : phase?.startsWith('night') ? 'Noc' : roundTitleLabel}
                 </h1>
               </>
             ) : (
               <>
-                <p className="text-white/40 text-xs uppercase tracking-[0.25em]">Twoja rola</p>
+                <p className="section-eyebrow !tracking-[0.3em]">Twoja rola</p>
                 <h1
-                  className={`font-display text-5xl sm:text-6xl font-bold capitalize ${roleColorClass}`}
+                  className={`font-display text-[clamp(1.75rem,11vw,3.75rem)] max-w-full text-center leading-tight font-bold capitalize ${roleColorClass}`}
                 >
                   {roleLabel}
                 </h1>
               </>
+            )}
+
+            {/* Informacje o rundzie — część głównego ekranu (faza, opis, timer) */}
+            <div className="flex flex-col items-center gap-2">
+              <PhaseBadge phase={phase} round={round} />
+              <p className="text-white/55 text-sm text-center italic max-w-xs">
+                {PHASE_FLAVOR[phase] ?? PHASE_FLAVOR.null}
+              </p>
+              <TurnTimer phaseDeadline={phaseDeadline} phase={phase} sizeClass="text-3xl" />
+            </div>
+
+            {/* Podgląd roli: przycisk jest ZAWSZE zamontowany (także w trakcie podglądu),
+                a puszczenie łapiemy na oknie — inaczej znikał razem z ukrytą rolą. */}
+            {!isMaster && !hideRoleScreen && phase !== 'role_reveal' && (
+              <button
+                type="button"
+                className="btn-ghost select-none touch-none"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  setPeekRole(true);
+                }}
+                onContextMenu={(e) => e.preventDefault()}
+              >
+                {peekRole ? 'Puść, aby ukryć rolę' : 'Przytrzymaj, aby zobaczyć rolę'}
+              </button>
+            )}
+
+            {/* Karty mocy przydzielone na starcie — widoczne tylko na ekranie roli */}
+            {phase === 'role_reveal' && cards.length > 0 && !isEliminated && (
+              <div className="w-full max-w-sm card py-3 px-3 text-sm space-y-1 text-center">
+                <p className="section-eyebrow">Karta mocy</p>
+                {cards.map((c) => (
+                  <p key={c.type} className="text-white/85">
+                    <span aria-hidden>{CARD_INFO[c.type]?.icon}</span> Otrzymałeś(aś) kartę „
+                    {CARD_INFO[c.type]?.name || c.type}”
+                    <span className="block text-xs text-white/45">{CARD_INFO[c.type]?.how}</span>
+                  </p>
+                ))}
+                <p className="text-xs text-white/40">
+                  Użyjesz jej przyciskiem „Użyj karty” podczas głosowania.
+                </p>
+              </div>
             )}
 
             {/* Wyeliminowany gracz — komunikat zamiast kokpitu akcji */}
@@ -604,7 +1107,7 @@ export default function GamePage() {
             )}
 
             {/* Waiting loader after action */}
-            {!isEliminated && actionDone && waitingLabel && (
+            {!isEliminated && actionDone && waitingLabel && showWaiting && (
               <div className="flex flex-col items-center gap-3 mt-2">
                 <div className="flex gap-1.5">
                   {[0, 1, 2].map((i) => (
@@ -631,37 +1134,68 @@ export default function GamePage() {
               </div>
             )}
 
-            {/* Action button when player hasn't acted yet */}
-            {!isEliminated && needsAction && !showActionOverlay && (
-              <button
-                type="button"
-                onClick={() => setShowActionOverlay(true)}
-                className="btn-primary mt-4"
-              >
-                {isNightPhaseForRole ? 'Wykonaj akcję' : 'Głosuj'}
-              </button>
+            {mafiaDisagreementBanner && !showActionOverlay && (
+              <div className="mt-4 w-full max-w-sm">{mafiaDisagreementBanner}</div>
+            )}
+
+            {mafiaFallenNotice && !showActionOverlay && (
+              <div className="mt-2 w-full max-w-sm">{mafiaFallenNotice}</div>
+            )}
+
+            {mafiaVotesSummary && !showActionOverlay && (
+              <div className="mt-2 w-full max-w-sm">{mafiaVotesSummary}</div>
             )}
           </div>
         )}
       </main>
 
-      {/* Bottom — turn info bar (always visible) */}
-      <footer className="shrink-0 border-t border-white/10 bg-black/40 backdrop-blur-md px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <PhaseBadge phase={phase} round={round} compact />
-            <p className="text-white/45 text-xs mt-1 truncate italic">
-              {PHASE_FLAVOR[phase] ?? PHASE_FLAVOR.null}
-            </p>
+      {/* Bottom — przycisk akcji, ikona roli (prawy dolny róg) i pasek rundy */}
+      {!isMaster && (
+        <div ref={bottomRef} className="relative z-50 shrink-0">
+          {showCornerMenu && (
+            <RoleCornerMenu
+              role={role}
+              players={players}
+              meId={user?.id}
+              detectiveHistory={detectiveHistory}
+              doctorHistory={doctorHistory}
+              lastDoctorTarget={lastDoctorTarget}
+              roomSettings={roomSettings}
+              chatChannel={chatChannel}
+              roomCode={code}
+            />
+          )}
+          <div className="px-4 pt-3 pb-4 bg-ink-900/85 border-t border-brass-500/25 backdrop-blur-md space-y-2">
+            {/* Tryb zaawansowany: przycisk widoczny dla wszystkich w głosowaniu, żeby jego
+                naciśnięcie niczego nie zdradzało — gracz bez karty dostanie tylko informację. */}
+            {advancedMode && phase === 'day_vote' && !isEliminated && (
+              <button
+                type="button"
+                onClick={() => setShowCardModal(true)}
+                className="w-full inline-flex items-center justify-center gap-2 btn-secondary"
+              >
+                <span aria-hidden>🃏</span>
+                Użyj karty
+              </button>
+            )}
+            {showActionButton ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setActionError(null);
+                  setShowActionOverlay((v) => !v);
+                }}
+                className={`w-full inline-flex items-center justify-center gap-2 ${
+                  showActionOverlay ? 'btn-ghost' : 'btn-primary'
+                }`}
+              >
+                <span aria-hidden>{actionButtonIcon}</span>
+                {actionButtonLabel}
+              </button>
+            ) : (
+              <div className="h-[2.75rem]" aria-hidden />
+            )}
           </div>
-          <TurnTimer phaseDeadline={phaseDeadline} phase={phase} />
-        </div>
-      </footer>
-
-      {/* Mafia chat */}
-      {chatChannel && (
-        <div className="shrink-0 h-44 border-t border-white/10 bg-black/30">
-          <Chat channel={chatChannel} roomCode={code} readOnly={isMaster} />
         </div>
       )}
 
@@ -681,17 +1215,20 @@ export default function GamePage() {
 
       {/* Action overlay */}
       {showActionOverlay && !isMaster && !isEliminated && (
-        <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
+        <div
+          className="fixed inset-x-0 top-0 z-40 flex items-end sm:items-center justify-center"
+          style={{ bottom: bottomH }}
+        >
           <button
             type="button"
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
             onClick={() => { setShowActionOverlay(false); setActionError(null); }}
             aria-label="Zamknij"
           />
-          <div className="relative w-full max-w-lg mx-4 mb-4 sm:mb-0 max-h-[85dvh] overflow-y-auto animate-popup-in space-y-2 flex flex-col">
+          <div className="relative w-full max-w-lg mx-4 mb-4 sm:mb-0 max-h-[calc(100%-1rem)] min-h-0 overflow-hidden animate-popup-in gap-2 flex flex-col">
             {/* Error banner */}
             {actionError && (
-              <div className="card bg-red-900/40 border border-red-500/30 text-red-200 text-sm py-2 px-3">
+              <div key={actionError} className="card bg-flame-500/30 border border-blood/40 text-paper-100 text-sm py-2 px-3 animate-shake">
                 ⚠ {actionError}
               </div>
             )}
@@ -703,13 +1240,29 @@ export default function GamePage() {
                 disabled={actionSubmitted}
                 result={nightResult}
                 doctorBlockedId={doctorRepeatBlocked}
+                mafiaVotes={role === 'mafia' ? mafiaVotes : null}
+                mafiaTeammateIds={role === 'mafia' ? mafiaTeammateIds : null}
+                currentUserId={user?.id}
+                onRetract={role === 'mafia' ? handleRetractVote : null}
+              />
+            )}
+            {isCardTurn && (
+              <CardNightPicker
+                key={`${phase}-${turn}-${cardPrompt?.type}`}
+                prompt={cardPrompt}
+                players={players}
+                onSubmit={handleCardNightAction}
+                result={cardNightResult}
+                error={null}
               />
             )}
             {phase === 'day_vote' && (
               <VotePanel
                 players={alivePlayers}
                 onVote={handleVote}
-                disabled={voteSubmitted}
+                onRetract={handleRetractDayVote}
+                hasVoted={voteSubmitted}
+                myVoteTarget={myVoteTarget}
               />
             )}
           </div>
@@ -726,18 +1279,23 @@ export default function GamePage() {
         detectiveHistory={detectiveHistory}
         lastDoctorTarget={lastDoctorTarget}
         recentlyEliminatedId={recentlyEliminatedId}
+        onProfileSaved={() => loadState()}
+        cards={cards}
+        cardLog={cardLog}
+        mafiaCard={mafiaCard}
+        round={round}
+      />
+
+      <CardUseModal
+        open={showCardModal && !isMaster}
+        onClose={() => setShowCardModal(false)}
+        cards={cards}
+        round={round}
+        onDeclare={handleDeclareCard}
       />
 
       {/* Leave game confirmation */}
-      {showLeaveConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-            onClick={() => setShowLeaveConfirm(false)}
-            aria-label="Anuluj"
-          />
-          <div className="relative card max-w-xs w-full space-y-4 animate-popup-in text-center">
+      <AnimatedModal open={showLeaveConfirm} onClose={() => setShowLeaveConfirm(false)}>
             <h3 className="font-display text-lg font-bold">Opuścić grę?</h3>
             <p className="text-white/50 text-sm">
               {isMaster
@@ -757,7 +1315,7 @@ export default function GamePage() {
               <button
                 type="button"
                 onClick={() => router.push('/lobby')}
-                className="w-full px-4 py-2 rounded-lg border border-white/20 text-white/70 hover:text-white hover:border-white/40 text-sm font-semibold transition-colors"
+                className="btn-ghost w-full"
               >
                 Wyjdź do lobby
               </button>
@@ -769,9 +1327,7 @@ export default function GamePage() {
                 Anuluj
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </AnimatedModal>
     </div>
   );
 }

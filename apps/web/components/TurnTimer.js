@@ -10,7 +10,7 @@ function formatRemaining(ms) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export default function TurnTimer({ phaseDeadline, phase }) {
+export default function TurnTimer({ phaseDeadline, phase, sizeClass = 'text-lg' }) {
   const [remaining, setRemaining] = useState(null);
 
   useEffect(() => {
@@ -33,7 +33,7 @@ export default function TurnTimer({ phaseDeadline, phase }) {
 
   return (
     <span
-      className={`font-mono text-lg tabular-nums ${urgent ? 'text-blood animate-pulse' : 'text-white/80'}`}
+      className={`font-mono ${sizeClass} tabular-nums ${urgent ? 'text-blood animate-pulse' : 'text-white/80'}`}
     >
       {formatRemaining(remaining)}
     </span>

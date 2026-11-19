@@ -24,9 +24,12 @@ export default function Chat({ channel, roomCode, readOnly = false }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const bottomRef = useRef(null);
+  // Id wiadomości z historii — bez animacji; animujemy tylko te, które dochodzą na żywo.
+  const historyIdsRef = useRef(new Set());
 
   const reloadHistory = useCallback(async () => {
     const list = await loadHistoryWithRetry(emit, channel);
+    historyIdsRef.current = new Set(list.map((m) => m.id));
     setMessages(list);
   }, [emit, channel]);
 
@@ -35,7 +38,10 @@ export default function Chat({ channel, roomCode, readOnly = false }) {
     let cancelled = false;
     (async () => {
       const list = await loadHistoryWithRetry(emit, channel);
-      if (!cancelled) setMessages(list);
+      if (!cancelled) {
+        historyIdsRef.current = new Set(list.map((m) => m.id));
+        setMessages(list);
+      }
     })();
     return () => {
       cancelled = true;
@@ -72,14 +78,17 @@ export default function Chat({ channel, roomCode, readOnly = false }) {
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2">
         {messages.length === 0 && (
-          <p className="text-center text-white/20 text-sm py-4">Brak wiadomości</p>
+          <p className="text-center text-white/20 text-sm py-4 animate-fade-in">Brak wiadomości</p>
         )}
         {messages.map((msg) => {
           const isOwn = msg.userId === user?.id;
+          const isLive = !historyIdsRef.current.has(msg.id);
           return (
             <div
               key={msg.id}
-              className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}
+              className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'} ${
+                isLive ? (isOwn ? 'animate-slide-in-right' : 'animate-slide-in-left') : ''
+              }`}
             >
               {!isOwn && (
                 <span className="text-[12px] text-white/30 mb-0.5 ml-1">

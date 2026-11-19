@@ -36,33 +36,33 @@ export default function EnterPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 w-full max-w-sm shadow-2xl">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white tracking-tight">Mafia IRL</h1>
-          <p className="text-gray-500 text-sm mt-1">Wpisz hasło dostępu, aby kontynuować</p>
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="auth-card !p-8 animate-scale-in">
+        <div className="mb-6 animate-fade-up [animation-delay:120ms]">
+          <h1 className="font-display text-2xl font-bold tracking-[0.3em] text-paper-100">MAFIA IRL</h1>
+          <p className="text-paper-200/50 text-sm mt-2">Wpisz hasło dostępu, aby kontynuować</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 animate-fade-up [animation-delay:220ms]">
           <div>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Hasło"
-              className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              className="input"
               autoFocus
               autoComplete="current-password"
             />
             {error && (
-              <p className="text-red-400 text-sm mt-2">{error}</p>
+              <p key={error} className="text-blood text-sm mt-2 animate-shake">{error}</p>
             )}
           </div>
 
           <button
             type="submit"
             disabled={loading || !password}
-            className="w-full py-3 bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors"
+            className="btn-primary w-full"
           >
             {loading ? 'Sprawdzam…' : 'Wejdź'}
           </button>

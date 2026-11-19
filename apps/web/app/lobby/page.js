@@ -58,17 +58,17 @@ export default function LobbyPage() {
 
   return (
     <div className="flex-1 flex flex-col px-6 py-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-8 animate-fade-up">
         <div>
-          <h1 className="font-display text-2xl font-bold">MAFIA</h1>
-          <p className="text-white/40 text-sm">{user?.username || user?.email}</p>
+          <h1 className="font-display text-2xl font-bold tracking-[0.3em]">MAFIA</h1>
+          <p className="section-eyebrow mt-1">{user?.username || user?.email}</p>
         </div>
-        <button onClick={logout} className="btn-secondary text-xs">
+        <button onClick={logout} className="btn-ghost">
           Wyloguj
         </button>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center gap-6 max-w-sm mx-auto w-full">
+      <div className="auth-card stagger flex-1 max-h-[34rem] my-auto flex flex-col items-center justify-center gap-6 mx-auto animate-scale-in [animation-delay:100ms]">
         {canCreateRoom ? (
           <button
             type="button"
@@ -79,16 +79,12 @@ export default function LobbyPage() {
             {creating ? 'Tworzenie...' : 'Utwórz pokój'}
           </button>
         ) : (
-          <div className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-center text-sm text-white/50">
+          <div className="w-full rounded-lg border border-brass-500/20 bg-white/[0.03] px-4 py-3 text-center text-sm text-paper-200/60">
             Tylko organizator może utworzyć pokój. Dołącz kodem wysłanym przez hosta.
           </div>
         )}
 
-        <div className="flex items-center gap-3 w-full">
-          <div className="flex-1 h-px bg-white/10" />
-          <span className="text-white/30 text-xs uppercase tracking-wider">lub</span>
-          <div className="flex-1 h-px bg-white/10" />
-        </div>
+        <div className="ornament w-full">lub</div>
 
         <form onSubmit={handleJoin} className="w-full space-y-3">
           <input
@@ -108,7 +104,11 @@ export default function LobbyPage() {
           </button>
         </form>
 
-        {error && <p className="text-blood text-sm text-center">{error}</p>}
+        {error && (
+          <p key={error} style={{ '--i': 0 }} className="text-blood text-sm text-center animate-shake">
+            {error}
+          </p>
+        )}
 
         <p className="text-white/30 text-xs text-center max-w-xs">
           Żeby znajomi dołączyli: wyślij im <strong className="text-white/50">link</strong> lub{' '}
@@ -117,7 +117,7 @@ export default function LobbyPage() {
         </p>
 
         {!connected && (
-          <p className="text-yellow-500/60 text-xs text-center">
+          <p className="text-brass-400/70 text-xs text-center animate-fade-in">
             Łączenie z serwerem...
           </p>
         )}

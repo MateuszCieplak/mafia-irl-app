@@ -1,5 +1,5 @@
 import { rooms } from '../game/state.js';
-import { presenceSetRoom, presenceClearRoom } from '../game/presence.js';
+import { presenceSetRoom, presenceClearRoom, removePendingInvite } from '../game/presence.js';
 import { buildRoomPlayerList } from '../game/roomPlayers.js';
 import { addBotToRoom } from '../game/bots.js';
 import { ensureAdminAuth } from '../lib/pocketbase.js';
@@ -22,6 +22,28 @@ function roomCreatorEmailAllowed(socket) {
 function normalizeRoomSettings(settings) {
   const next = { ...(settings || {}) };
   next.phase_timers_enabled = next.phase_timers_enabled === true;
+  next.detective_first_night_immunity = next.detective_first_night_immunity === true;
+  next.mafia_count_manual = next.mafia_count_manual === true;
+  if (next.mafia_count !== undefined) {
+    next.mafia_count = Math.max(1, Math.floor(Number(next.mafia_count) || 1));
+  }
+  next.doctor_count = Math.max(1, Math.floor(Number(next.doctor_count) || 1));
+  next.detective_count = Math.max(1, Math.floor(Number(next.detective_count) || 1));
+  normalizeCardSettings(next);
+  return next;
+}
+
+/** Ustawienia trybu „Mafia zaawansowana” (karty mocy). */
+function normalizeCardSettings(next) {
+  next.advanced_mode = next.advanced_mode === true;
+  next.card_check_enabled = next.card_check_enabled !== false;
+  next.card_shield_citizen_enabled = next.card_shield_citizen_enabled !== false;
+  next.card_shield_mafia_enabled = next.card_shield_mafia_enabled !== false;
+  next.card_mafia_special = ['none', 'alibi', 'jam', 'false_lead'].includes(next.card_mafia_special)
+    ? next.card_mafia_special
+    : 'alibi';
+  next.card_min_round = Math.max(1, Math.floor(Number(next.card_min_round) || 3));
+  next.check_card_count = Math.max(1, Math.floor(Number(next.check_card_count) || 1));
   return next;
 }
 
@@ -39,6 +61,7 @@ export function registerLobbyHandlers(io, socket, pb) {
           max_players: 15,
           doctor_can_self_protect: true,
           doctor_repeat_protect: false,
+          detective_first_night_immunity: false,
           // Timers off by default — master advances phases from the cockpit.
           phase_timers_enabled: false,
           // Phase timers (seconds). Used only when phase_timers_enabled is true.
@@ -180,6 +203,9 @@ export function registerLobbyHandlers(io, socket, pb) {
       socket.roomCode = code;
       socket.roomId = room.id;
       presenceSetRoom(socket.userId, code);
+      // Gracz jest już w pokoju — zaproszenie przestaje być potrzebne.
+      removePendingInvite(socket.userId, code);
+      state.invites?.delete(socket.userId);
 
       const playerList = buildRoomPlayerList(state);
 
@@ -249,6 +275,11 @@ export function registerLobbyHandlers(io, socket, pb) {
         'max_players',
         'doctor_can_self_protect',
         'doctor_repeat_protect',
+        'detective_first_night_immunity',
+        'mafia_count_manual',
+        'mafia_count',
+        'doctor_count',
+        'detective_count',
         'phase_timers_enabled',
         'phase_timer_detective_sec',
         'phase_timer_doctor_sec',
@@ -256,6 +287,13 @@ export function registerLobbyHandlers(io, socket, pb) {
         'phase_timer_deliberation_sec',
         'phase_timer_vote_sec',
         'self_vote',
+        'advanced_mode',
+        'card_check_enabled',
+        'card_shield_citizen_enabled',
+        'card_shield_mafia_enabled',
+        'card_mafia_special',
+        'card_min_round',
+        'check_card_count',
       ];
 
       const nextSettings = { ...(state.settings || {}) };
@@ -266,6 +304,12 @@ export function registerLobbyHandlers(io, socket, pb) {
       }
       // Jawny boolean — unikamy truthy stringów / undefined z starych pokoi.
       nextSettings.phase_timers_enabled = nextSettings.phase_timers_enabled === true;
+      nextSettings.detective_first_night_immunity = nextSettings.detective_first_night_immunity === true;
+      nextSettings.mafia_count_manual = nextSettings.mafia_count_manual === true;
+      nextSettings.mafia_count = Math.max(1, Math.floor(Number(nextSettings.mafia_count) || 1));
+      nextSettings.doctor_count = Math.max(1, Math.floor(Number(nextSettings.doctor_count) || 1));
+      nextSettings.detective_count = Math.max(1, Math.floor(Number(nextSettings.detective_count) || 1));
+      normalizeCardSettings(nextSettings);
 
       await ensureAdminAuth();
       await pb.collection('rooms').update(state.id, { settings: nextSettings });

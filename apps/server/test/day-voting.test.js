@@ -234,13 +234,15 @@ describe('7. Dzień — głosowanie (9 żywych po eliminacji p05)', () => {
     clearAssignRolesForTest();
   });
 
-  it('7.7 Podwójny głos — drugi odrzucony', async () => {
+  it('7.7 Zmiana głosu — drugi głos nadpisuje pierwszy', async () => {
     const { masterSocket, sockets, socketById } = await reachDayVoteAfterEliminatingP05(ctx);
     await advancePhase(masterSocket);
 
     await submitVote(socketById.p01.socket, 'p02');
     const r2 = await submitVote(socketById.p01.socket, 'p06');
-    expect(r2.error).toBe('already_voted');
+    expect(r2.ok).toBe(true);
+    const r3 = await emitAck(socketById.p01.socket, 'retract_vote');
+    expect(r3.ok).toBe(true);
 
     masterSocket.disconnect();
     for (const { socket } of sockets) socket.disconnect();
