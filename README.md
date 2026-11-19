@@ -42,6 +42,9 @@ Cała gra działa na komputerze na imprezie, a gracze wchodzą z telefonów prze
 pnpm party
 ```
 
+Na Windowsie najprościej: **dwuklik na `party.cmd`** w katalogu repo. Jeśli PowerShell zgłasza
+„running scripts is disabled on this system”, użyj `party.cmd` albo `pnpm.cmd party` zamiast `pnpm party`.
+
 Skrypt sam:
 - pobiera (za pierwszym razem) PocketBase i `cloudflared` do `.tools/`,
 - tworzy bazę w `pb/pb_data/` i kolekcje gry (`pb_migrations/`), zakłada konto admina,
