@@ -46,6 +46,20 @@ export function SocketProvider({ children }) {
       socketRef.current = socket;
       socket.on('connect', () => setConnected(true));
       socket.on('disconnect', () => setConnected(false));
+      // Serwer odrzucił token — bez tego klient w nieskończoność pokazuje „Łączenie z serwerem…”.
+      // Sprawdzamy w PocketBase, czy sesja naprawdę wygasła (a nie np. chwilowo leży baza),
+      // i dopiero wtedy wylogowujemy.
+      socket.on('connect_error', async (err) => {
+        if (err?.message !== 'invalid_token') return;
+        try {
+          await pb.collection('users').authRefresh({ requestKey: null });
+        } catch (e) {
+          if (e?.status === 401 || e?.status === 403 || e?.status === 404) {
+            pb.authStore.clear();
+            window.location.assign('/login');
+          }
+        }
+      });
     }
 
     syncSocket();

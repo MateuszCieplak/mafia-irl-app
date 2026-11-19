@@ -18,7 +18,7 @@
  * wydań na GitHubie. Własne ścieżki: POCKETBASE_BIN, CLOUDFLARED_BIN w .env.
  */
 import { spawn, spawnSync } from 'child_process';
-import { existsSync, mkdirSync, writeFileSync, chmodSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, chmodSync, readFileSync, readdirSync, statSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
@@ -262,13 +262,33 @@ function startProxy() {
 
 // ── Główny przebieg ───────────────────────────────────────────────────────────
 
+/** Najnowsza data modyfikacji plików źródłowych frontendu (bez node_modules i buildów). */
+function newestWebSourceMtime() {
+  let newest = 0;
+  const walk = (p) => {
+    const st = statSync(p);
+    if (st.isDirectory()) {
+      for (const name of readdirSync(p)) {
+        if (name === 'node_modules' || name.startsWith('.next')) continue;
+        walk(join(p, name));
+      }
+    } else if (st.mtimeMs > newest) {
+      newest = st.mtimeMs;
+    }
+  };
+  walk(WEB_DIR);
+  return newest;
+}
+
 function needsBuild() {
   if (FORCE_BUILD) return true;
   const marker = join(WEB_DIR, DIST_DIR, 'party-build.json');
   if (!existsSync(join(WEB_DIR, DIST_DIR, 'BUILD_ID')) || !existsSync(marker)) return true;
   try {
     const prev = JSON.parse(readFileSync(marker, 'utf8'));
-    return prev.hostEmail !== (process.env.NEXT_PUBLIC_ROOM_HOST_EMAIL || '');
+    if (prev.hostEmail !== (process.env.NEXT_PUBLIC_ROOM_HOST_EMAIL || '')) return true;
+    // Zmiana kodu (git pull, poprawka) → przebuduj automatycznie.
+    return newestWebSourceMtime() > Date.parse(prev.at);
   } catch {
     return true;
   }

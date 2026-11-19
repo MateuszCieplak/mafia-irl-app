@@ -18,8 +18,22 @@ export function AuthProvider({ children }) {
     const unsub = pb.authStore.onChange((_token, record) => {
       setUser(record);
     });
+
+    // Token w localStorage może być już nieważny po stronie serwera (zmiana maila/hasła,
+    // nowa baza na innej imprezie). Odświeżamy go przy starcie — przy okazji wraca
+    // aktualny rekord (np. poprawiony email), a martwą sesję czyścimy.
+    if (pb.authStore.token) {
+      pb.collection('users')
+        .authRefresh({ requestKey: null })
+        .catch((err) => {
+          if (err?.status === 401 || err?.status === 403 || err?.status === 404) {
+            pb.authStore.clear();
+            router.replace('/login');
+          }
+        });
+    }
     return unsub;
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const login = useCallback(async (email, password) => {
     const result = await pb.collection('users').authWithPassword(email, password);
