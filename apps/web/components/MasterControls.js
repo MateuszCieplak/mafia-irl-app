@@ -1,6 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import PhaseBadge from '@/components/PhaseBadge';
+import TurnTimer from '@/components/TurnTimer';
+import { CARD_PHASES, CARD_INFO, mafiaCountLabel } from '@/lib/cards';
 
 const PHASE_ACTIONS = {
   null: 'Rozpocznij noc',
@@ -17,6 +20,8 @@ const PHASE_ACTIONS = {
 const PHASE_QUOTES = {
   null: { icon: '🌙', text: 'Zapada noc…' },
   role_reveal: { icon: '🎭', text: 'Gracze poznają swoje role' },
+  night_mafia_card: { icon: '🃏', text: 'Budzi się Mafia i wykorzystuje swoją kartę' },
+  night_citizen_card: { icon: '🃏', text: 'Budzi się obywatel i wykorzystuje swoją kartę mocy' },
   night_detective: { icon: '🔍', text: 'Budzi się Detektyw' },
   night_doctor: { icon: '💊', text: 'Budzi się Lekarz' },
   night_mafia: { icon: '🔫', text: 'Budzi się Mafia' },
@@ -30,7 +35,30 @@ const PHASE_QUOTES = {
 // pominięciem trwającej akcji — nie dodajemy do nich prefiksu „Pomiń”.
 const DELIBERATE_ADVANCE_PHASES = new Set(['role_reveal', 'night_resolve', 'day_resolve']);
 
-const ROLE_LABELS_PL = { detective: 'Detektyw', doctor: 'Lekarz', mafia: 'Mafia' };
+const ROLE_LABELS_PL = {
+  detective: 'Detektyw',
+  doctor: 'Lekarz',
+  mafia: 'Mafia',
+  citizen_card: 'Karta obywatela',
+  mafia_card: 'Karta mafii',
+};
+
+// Skróty nazw faz do etykiety przycisku, gdy w grze są tury kart (kolejność zależy od ustawień).
+const PHASE_SHORT = {
+  night_mafia_card: 'Karta mafii',
+  night_citizen_card: 'Karta obywatela',
+  night_detective: 'Detektyw',
+  night_doctor: 'Lekarz',
+  night_mafia: 'Mafia',
+  night_resolve: 'Rozstrzygnięcie nocy',
+};
+
+function advanceLabelFor(phase, nextPhase) {
+  const touchesCards = CARD_PHASES.includes(phase) || CARD_PHASES.includes(nextPhase);
+  if (!touchesCards) return PHASE_ACTIONS[phase] ?? PHASE_ACTIONS[null];
+  if (!phase || phase === 'role_reveal') return `Rozpocznij: ${PHASE_SHORT[nextPhase] ?? 'noc'}`;
+  return `${PHASE_SHORT[phase] ?? phase} → ${PHASE_SHORT[nextPhase] ?? 'dalej'}`;
+}
 
 function playerName(id, players) {
   if (!id) return '—';
@@ -39,7 +67,7 @@ function playerName(id, players) {
 }
 
 function submissionDetail(role, data, players) {
-  if (!data || !data.submitted) return null;
+  if (!data || !data.submitted) return null; // submitted:false (cofnięty głos mafii) → „Oczekuje…”
   if (role === 'detective') {
     const target = playerName(data.targetId, players);
     const result = data.isMafia ? 'MAFIA' : 'nie mafia';
@@ -51,31 +79,56 @@ function submissionDetail(role, data, players) {
   if (role === 'mafia') {
     return `cel: ${playerName(data.targetId, players)}`;
   }
+  if (role === 'citizen_card') {
+    const names = (data.targetIds || []).map((id) => playerName(id, players)).join(', ');
+    return `${playerName(data.actorId, players)} sprawdził(a) ${names} → pokazano ${mafiaCountLabel(data.count)}${
+      data.jammed ? ' (zakłócone)' : ''
+    }`;
+  }
+  if (role === 'mafia_card') {
+    const info = CARD_INFO[data.cardType];
+    return `${info?.name || data.cardType}${data.targetId ? ` → ${playerName(data.targetId, players)}` : ''}`;
+  }
   return null;
-}
-
-function formatTime(date) {
-  if (!date) return '';
-  const d = date instanceof Date ? date : new Date(date);
-  return d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 export default function MasterControls({
   phase,
+  round,
+  turn = 0,
+  turnCount = 1,
+  phaseDeadline,
   submissions,
   voteStatus,
   players,
+  nextPhase = null,
+  cardQueue = null,
+  cardsOverview = null,
   onAdvance,
   onEndGame,
 }) {
   const [advancing, setAdvancing] = useState(false);
   const [ending, setEnding] = useState(false);
-  const label = PHASE_ACTIONS[phase] ?? PHASE_ACTIONS[null];
   const quote = PHASE_QUOTES[phase] ?? PHASE_QUOTES[null];
 
-  const voters = phase === 'day_vote'
-    ? (players || []).filter((p) => !p.isMaster && !p.eliminated)
-    : [];
+  // Wielu lekarzy/detektywów: „Detektyw 1/2” i przycisk prowadzący do następnej tury.
+  const turnRole = {
+    night_detective: 'Detektyw',
+    night_doctor: 'Lekarz',
+    night_citizen_card: 'Karta obywatela',
+  }[phase];
+  const multiTurn = Boolean(turnRole) && turnCount > 1;
+  const hasNextTurn = multiTurn && turn + 1 < turnCount;
+  const label = hasNextTurn
+    ? `${turnRole} ${turn + 1} → ${turnRole} ${turn + 2}`
+    : advanceLabelFor(phase, nextPhase);
+  const quoteText = multiTurn ? `${quote.text} (${turn + 1}/${turnCount})` : quote.text;
+
+  // Głosowanie dzienne: przycisk zablokowany, dopóki nie zagłosują wszyscy żywi gracze.
+  const votersAlive = (players || []).filter((p) => !p.isMaster && !p.eliminated);
+  const missingVoters = votersAlive.filter((p) => !voteStatus?.[p.id]);
+  const votesComplete = missingVoters.length === 0;
+  const votesBlock = phase === 'day_vote' && !votesComplete;
 
   async function handleAdvance() {
     setAdvancing(true);
@@ -96,37 +149,29 @@ export default function MasterControls({
         Panel Mastera
       </h3>
 
+      {/* Runda / faza / timer — dawniej dolny pasek ekranu */}
+      <div className="flex items-center justify-between gap-3">
+        <PhaseBadge phase={phase} round={round} compact animate={false} />
+        <TurnTimer phaseDeadline={phaseDeadline} phase={phase} />
+      </div>
+
       {/* Cytat fazowy */}
       <div className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2">
         <span className="text-lg">{quote.icon}</span>
-        <span className="font-display font-semibold text-white/90 text-sm">{quote.text}</span>
+        <span className="font-display font-semibold text-white/90 text-sm">{quoteText}</span>
       </div>
 
-      {voters.length > 0 && (
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-[12px] text-white/40 uppercase tracking-wider">
-            <span>Status głosowania</span>
-            <span>
-              {voters.filter((p) => voteStatus?.[p.id]).length}/{voters.length}
-            </span>
-          </div>
-          {voters.map((p) => {
-            const votedAt = voteStatus?.[p.id];
-            return (
-              <div key={p.id} className="flex items-center justify-between gap-2 text-sm">
-                <span className="text-white/70 shrink-0 truncate">{p.username || p.id}</span>
-                <span
-                  className={`text-right truncate ${
-                    votedAt ? 'text-safe font-semibold' : 'text-white/30'
-                  }`}
-                >
-                  {votedAt ? `✓ zagłosował(a) o ${formatTime(votedAt)}` : 'Oczekuje…'}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+      {/* Tury kart: master wie, czy ktoś zgłosił użycie, czy to blef dla reszty grupy */}
+      {phase === 'night_citizen_card' && (
+        <CardAnnounce text="Powiedz na głos: „Budzi się obywatel i używa karty mocy”. Nie mów, jakiej karty." />
       )}
+      {phase === 'night_mafia_card' && (
+        <CardAnnounce text="Powiedz na głos: „Budzi się mafia i używa karty mocy”. Nie mów, jakiej karty." />
+      )}
+      {phase === 'day_vote' &&
+        (cardQueue?.shields || 0) + (cardQueue?.check?.length || 0) + (cardQueue?.mafia ? 1 : 0) > 0 && (
+          <CardAnnounce text="Ktoś użył karty mocy — ogłoś to grupie na głos („Użyto karty mocy”). Nie mów, jakiej karty ani kto jej użył." />
+        )}
 
       {submissions && Object.keys(submissions).length > 0 && (
         <div className="space-y-1.5">
@@ -149,13 +194,40 @@ export default function MasterControls({
         </div>
       )}
 
+      {phase === 'day_vote' && (
+        <div
+          className={`rounded-lg px-3 py-2 text-sm border ${
+            votesComplete
+              ? 'bg-safe/10 border-safe/30 text-safe'
+              : 'bg-yellow-400/10 border-yellow-400/30 text-yellow-200'
+          }`}
+        >
+          {votesComplete ? (
+            <span className="font-semibold">✓ Wszyscy gracze zagłosowali</span>
+          ) : (
+            <>
+              <span className="font-semibold">
+                Zagłosowało {votersAlive.length - missingVoters.length}/{votersAlive.length}
+              </span>
+              <span className="block text-xs opacity-80">
+                Czekamy na: {missingVoters.map((p) => p.username).join(', ')}
+              </span>
+            </>
+          )}
+        </div>
+      )}
+
+      <CardsOverview overview={cardsOverview} players={players} />
+
       <button
         onClick={handleAdvance}
-        disabled={advancing}
+        disabled={advancing || votesBlock}
         className="btn-primary w-full"
       >
         {advancing
           ? 'Przechodzenie…'
+          : votesBlock
+          ? 'Czekaj na wszystkie głosy'
           : DELIBERATE_ADVANCE_PHASES.has(phase)
           ? label
           : `Pomiń: ${label}`}
@@ -171,5 +243,45 @@ export default function MasterControls({
         </button>
       )}
     </div>
+  );
+}
+
+function CardAnnounce({ text }) {
+  return (
+    <div className="rounded-lg px-3 py-2 text-xs leading-relaxed bg-fuchsia-500/10 border border-fuchsia-400/30 text-fuchsia-100">
+      <p>
+        <span className="font-semibold">🃏 Użyto karty mocy.</span> {text}
+      </p>
+    </div>
+  );
+}
+
+const CARD_NAMES_PL = {
+  check: 'Sprawdzenie',
+  shield: 'Tarcza',
+  mafia_shield: 'Tarcza mafii',
+  alibi: 'Alibi',
+  jam: 'Zakłócenie',
+  false_lead: 'Fałszywy trop',
+};
+
+function CardsOverview({ overview, players }) {
+  if (!overview || (!overview.holders?.length && !overview.mafia?.length)) return null;
+  return (
+    <details className="rounded-lg bg-white/5 px-3 py-2 text-xs text-white/70">
+      <summary className="cursor-pointer font-semibold text-white/60">Karty w grze</summary>
+      <ul className="mt-1.5 space-y-0.5">
+        {overview.holders.map((h) => (
+          <li key={h.userId} className={h.used ? 'opacity-50 line-through' : ''}>
+            {playerName(h.userId, players)}: {CARD_NAMES_PL[h.type] || h.type}
+          </li>
+        ))}
+        {overview.mafia.map((c) => (
+          <li key={c.type} className={c.used ? 'opacity-50 line-through' : ''}>
+            Mafia: {CARD_NAMES_PL[c.type] || c.type}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }

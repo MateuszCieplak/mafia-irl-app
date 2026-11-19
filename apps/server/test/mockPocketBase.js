@@ -31,6 +31,9 @@ function matchesFilter(record, filter) {
     const code = parseEq(part, 'code');
     if (code !== null && record.code !== code) return false;
 
+    const actorId = parseEq(part, 'actor_id');
+    if (actorId !== null && record.actor_id !== actorId) return false;
+
     const roundId = parseEq(part, 'round_id');
     if (roundId !== null && record.round_id !== roundId) return false;
   }

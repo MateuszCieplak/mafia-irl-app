@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/AuthContext';
+import BrandHeader from '@/components/BrandHeader';
 
 function getRegisterErrorMessage(err) {
   const fields = err?.response?.data || {};
@@ -38,20 +39,9 @@ export default function RegisterPage() {
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6">
-      <div className="relative mb-8 w-28">
-        <img
-          src="/logo.png"
-          alt="Sieje Hot Crew"
-          className="w-full h-auto select-none"
-          draggable={false}
-        />
-        <h1 className="pointer-events-none absolute bottom-0 right-0 translate-x-1/2 font-display text-4xl font-bold tracking-tight whitespace-nowrap text-blood">
-          MAFIA
-        </h1>
-      </div>
-      <p className="text-white/50 mb-8">Utwórz konto</p>
+      <BrandHeader subtitle="Utwórz konto" />
 
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
+      <form onSubmit={handleSubmit} className="auth-card stagger space-y-4 animate-scale-in [animation-delay:120ms]">
         <input
           type="text"
           placeholder="Nazwa gracza"
@@ -81,15 +71,19 @@ export default function RegisterPage() {
           autoComplete="new-password"
           minLength={8}
         />
-        {error && <p className="text-blood text-sm text-center">{error}</p>}
+        {error && (
+          <p key={error} style={{ '--i': 0 }} className="text-blood text-sm text-center animate-shake">
+            {error}
+          </p>
+        )}
         <button type="submit" className="btn-primary w-full" disabled={loading}>
           {loading ? 'Rejestracja...' : 'Zarejestruj'}
         </button>
       </form>
 
-      <p className="mt-6 text-white/40 text-sm">
+      <p className="mt-6 text-paper-200/40 text-sm animate-fade-in [animation-delay:450ms]">
         Masz już konto?{' '}
-        <Link href="/login" className="text-white underline">
+        <Link href="/login" className="text-brass-400 underline underline-offset-4 hover:text-paper-100">
           Zaloguj się
         </Link>
       </p>

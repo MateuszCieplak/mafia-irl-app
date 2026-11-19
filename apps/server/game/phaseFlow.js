@@ -2,16 +2,19 @@ import { resolveNight } from './night.js';
 import { resolveVotes, checkWinCondition } from './day.js';
 import { roomEventMeta, emitMasterInsight } from './events.js';
 import { scheduleBotPhaseActions } from './bots.js';
+import { TURN_PHASE_ROLE, turnCount, currentTurnActorId } from './turns.js';
+import {
+  BASE_PHASES,
+  CARD_PHASES,
+  phasesFor,
+  nextPhaseOf,
+  dbPhase,
+  resetNightCards,
+  clearShields,
+  emitCardQueue,
+} from './cards.js';
 
-export const PHASES = [
-  'night_detective',
-  'night_doctor',
-  'night_mafia',
-  'night_resolve',
-  'day_deliberation',
-  'day_vote',
-  'day_resolve',
-];
+export const PHASES = BASE_PHASES;
 
 function autoAdvanceEnabled() {
   return process.env.MAFIA_TEST_AUTH !== '1';
@@ -56,6 +59,11 @@ export function phaseMeta(state) {
   return {
     ...roomEventMeta(state),
     phaseDeadline: state.phaseTimerDeadline ?? null,
+    // Wielu lekarzy/detektywów: która tura w fazie (0-based) i ile ich jest.
+    turn: state.nightTurn ?? 0,
+    turnCount: turnCount(state, state.phase),
+    // Kolejność faz zależy od trybu (tury kart) — master widzi na przycisku, co będzie dalej.
+    nextPhase: nextPhaseOf(state),
   };
 }
 
@@ -98,13 +106,13 @@ export async function isNightPhaseActionComplete(state, pb, phase) {
   // przeklikuje je ręcznie (lub czeka na timer). „Ukończone” = realna akcja
   // żywych graczy, nigdy samo „brak kogoś do zagrania”.
   if (phase === 'night_detective') {
-    const detectiveId = Object.entries(state.roles || {}).find(([, r]) => r === 'detective')?.[0];
+    const detectiveId = currentTurnActorId(state, 'detective');
     if (!detectiveId) return false;
     if (await isEliminated(pb, state.id, detectiveId, state)) return false;
     return Boolean(state.nightActions?.detective);
   }
   if (phase === 'night_doctor') {
-    const doctorId = Object.entries(state.roles || {}).find(([, r]) => r === 'doctor')?.[0];
+    const doctorId = currentTurnActorId(state, 'doctor');
     if (!doctorId) return false;
     if (await isEliminated(pb, state.id, doctorId, state)) return false;
     return Boolean(state.nightActions?.doctor);
@@ -124,6 +132,12 @@ export async function areAllVotesIn(state, pb) {
   const alive = await getAliveParticipantIds(state, pb);
   if (alive.length === 0) return true;
   return alive.every((id) => state.votes?.has(id));
+}
+
+/** Żywi gracze, którzy jeszcze nie zagłosowali w day_vote. */
+export async function getMissingVoterIds(state, pb) {
+  const alive = await getAliveParticipantIds(state, pb);
+  return alive.filter((id) => !state.votes?.has(id));
 }
 
 function schedulePhaseTimer(io, state, pb, phase, advanceFn) {
@@ -147,7 +161,7 @@ async function emitNightActionPrompts(io, state, pb) {
   const meta = phaseMeta(state);
 
   if (state.phase === 'night_detective') {
-    const detectiveId = Object.entries(state.roles || {}).find(([, r]) => r === 'detective')?.[0];
+    const detectiveId = currentTurnActorId(state, 'detective');
     if (!detectiveId) return;
     if (await isEliminated(pb, state.id, detectiveId, state)) return;
     const p = state.players.get(detectiveId);
@@ -157,12 +171,33 @@ async function emitNightActionPrompts(io, state, pb) {
   }
 
   if (state.phase === 'night_doctor') {
-    const doctorId = Object.entries(state.roles || {}).find(([, r]) => r === 'doctor')?.[0];
+    const doctorId = currentTurnActorId(state, 'doctor');
     if (!doctorId) return;
     if (await isEliminated(pb, state.id, doctorId, state)) return;
     const p = state.players.get(doctorId);
     if (p?.socketId && !p.isBot) {
       io.to(p.socketId).emit('night_action_prompt', { phase: state.phase, role: 'doctor', ...meta });
+    }
+  }
+
+  if (state.phase === 'night_citizen_card') {
+    const actorId = state.cardQueue?.check?.[state.nightTurn ?? 0] ?? null;
+    if (actorId && !(await isEliminated(pb, state.id, actorId, state))) {
+      const p = state.players.get(actorId);
+      if (p?.socketId && !p.isBot) {
+        io.to(p.socketId).emit('night_action_prompt', { phase: state.phase, role: 'citizen_card', ...meta });
+      }
+    }
+  }
+
+  if (state.phase === 'night_mafia_card' && state.cardQueue?.mafia) {
+    for (const [uid, r] of Object.entries(state.roles || {})) {
+      if (r !== 'mafia') continue;
+      if (await isEliminated(pb, state.id, uid, state)) continue;
+      const p = state.players.get(uid);
+      if (p?.socketId && !p.isBot) {
+        io.to(p.socketId).emit('night_action_prompt', { phase: state.phase, role: 'mafia_card', ...meta });
+      }
     }
   }
 
@@ -195,24 +230,41 @@ async function emitGameOver(io, state, winner, pb, callback) {
 }
 
 export async function advancePhaseInternal(io, state, pb, callback) {
-  const currentIdx = state.phase ? PHASES.indexOf(state.phase) : -1;
+  let phaseList = phasesFor(state);
+  const currentIdx = state.phase ? phaseList.indexOf(state.phase) : -1;
   let nextIdx = currentIdx + 1;
 
-  if (nextIdx >= PHASES.length) {
+  // Kolejny lekarz/detektyw/obywatel z kartą w tej samej fazie: zostajemy w fazie, zmienia się tura.
+  const turnRole = TURN_PHASE_ROLE[state.phase];
+  const nextTurn = (state.nightTurn ?? 0) + 1;
+  const sameTurnAdvance =
+    (Boolean(turnRole) || state.phase === 'night_citizen_card') &&
+    nextTurn < turnCount(state, state.phase);
+  if (sameTurnAdvance) {
+    nextIdx = currentIdx;
+    state.nightTurn = nextTurn;
+    if (turnRole) delete state.nightActions[turnRole];
+  } else {
+    state.nightTurn = 0;
+  }
+
+  if (!sameTurnAdvance && nextIdx >= phaseList.length) {
     // Master opuszcza day_resolve (obejrzał werdykt głosowania) — startujemy nową rundę.
     nextIdx = 0;
     state.round += 1;
     state.votes = new Map();
+    // Od nowej rundy lista faz może zawierać tury kart.
+    phaseList = phasesFor(state);
 
     const round = await pb.collection('rounds').create({
       room_id: state.id,
       round_number: state.round,
-      phase: PHASES[0],
+      phase: dbPhase(phaseList[0]),
     });
     state.currentRoundId = round.id;
   }
 
-  const nextPhase = PHASES[nextIdx];
+  const nextPhase = phaseList[nextIdx];
   state.phase = nextPhase;
   // Wynik należy do fazy rozstrzygnięcia, nie do momentu emisji eventu — dzięki
   // temu gracz, którego telefon spał w chwili `night_resolved`, dostanie go
@@ -225,7 +277,7 @@ export async function advancePhaseInternal(io, state, pb, callback) {
     nextPhase === 'night_resolve' || nextPhase === 'day_resolve' ? Date.now() : null;
 
   if (state.currentRoundId) {
-    await pb.collection('rounds').update(state.currentRoundId, { phase: nextPhase });
+    await pb.collection('rounds').update(state.currentRoundId, { phase: dbPhase(nextPhase) });
   }
 
   schedulePhaseTimer(io, state, pb, nextPhase, advancePhaseInternal);
@@ -241,7 +293,11 @@ export async function advancePhaseInternal(io, state, pb, callback) {
   // fazie, dopóki master ręcznie nie przejdzie dalej (przycisk w MasterControls).
   if (nextPhase === 'night_resolve') {
     const result = await resolveNight(state, pb);
-    state.previousDoctorProtectTarget = state.nightActions.doctor?.targetId ?? null;
+    const protections = state.nightActions.protections || {};
+    const protectedIds = Object.values(protections);
+    state.previousDoctorTargets = { ...protections };
+    state.previousDoctorProtectTarget =
+      protectedIds[0] ?? state.nightActions.doctor?.targetId ?? null;
 
     state.phaseResult = {
       kind: 'night',
@@ -262,15 +318,17 @@ export async function advancePhaseInternal(io, state, pb, callback) {
     const killedName = result.killed
       ? (state.players.get(result.killed)?.username || result.killed)
       : null;
-    const protectedName = result.protected
-      ? (state.players.get(result.protected)?.username || result.protected)
-      : null;
+    const protectedName =
+      (result.protectedAll?.length ? result.protectedAll : result.protected ? [result.protected] : [])
+        .map((id) => state.players.get(id)?.username || id)
+        .join(', ') || null;
     emitMasterInsight(io, state, {
       kind: 'night_result',
       eliminatedId: result.eliminatedId,
       killedName,
       protectedName,
       protection_was_effective: result.protection_was_effective,
+      detective_immunity_triggered: result.detective_immunity_triggered === true,
     });
 
     const win = await checkWinCondition(state, pb);
@@ -280,6 +338,9 @@ export async function advancePhaseInternal(io, state, pb, callback) {
 
     state.nightActions = {};
     state.mafiaTargets = new Map();
+    state.mafiaWaitingForConsensus = false;
+    // Niewykonane zgłoszenia kart wygasają razem z nocą.
+    resetNightCards(state);
   }
 
   // Głosowanie jest rozstrzygane natychmiast po wejściu w day_resolve; gra czeka
@@ -289,8 +350,12 @@ export async function advancePhaseInternal(io, state, pb, callback) {
     state.phaseResult = {
       kind: 'vote',
       eliminatedPlayerId: result.eliminatedId,
-      outcome: result.outcome,
+      // Publicznie tarcza jest nieodróżnialna od zwykłego braku eliminacji — prawdziwy
+      // powód widzi tylko master (insight poniżej).
+      outcome: result.outcome === 'shielded' ? 'no_elimination' : result.outcome,
     };
+    // Tarcze działają tylko w głosowaniu, w którym je zgłoszono (zużyte także bez efektu).
+    clearShields(state);
 
     const pubMeta = phaseMeta(state);
     io.to(`room:${state.code}`).emit('vote_resolved', {
@@ -306,6 +371,13 @@ export async function advancePhaseInternal(io, state, pb, callback) {
       eliminatedId: result.eliminatedId,
       eliminatedName,
       outcome: result.outcome,
+      ...(result.outcome === 'shielded'
+        ? {
+            shieldedId: result.shieldedId,
+            shieldedName: state.players.get(result.shieldedId)?.username || result.shieldedId,
+            shieldedBy: result.shieldedBy,
+          }
+        : {}),
     });
 
     const win = await checkWinCondition(state, pb);
@@ -314,6 +386,7 @@ export async function advancePhaseInternal(io, state, pb, callback) {
     }
   }
 
+  if (CARD_PHASES.includes(nextPhase)) emitCardQueue(io, state);
   await emitNightActionPrompts(io, state, pb);
   scheduleBotPhaseActions(io, state, pb, nextPhase);
 

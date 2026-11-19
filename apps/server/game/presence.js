@@ -37,3 +37,29 @@ export function presenceClearRoom(userId) {
 export function presenceRemove(userId) {
   presence.delete(userId);
 }
+
+/**
+ * Zaproszenia oczekujące na gracza: userId -> Map(roomCode -> { roomCode, fromUsername, fromUserId, sentAt }).
+ * Trzymane w pamięci serwera, więc przeżywają odświeżenie strony zaproszonego.
+ */
+export const pendingInvites = new Map();
+
+export function addPendingInvite(userId, invite) {
+  let byRoom = pendingInvites.get(userId);
+  if (!byRoom) {
+    byRoom = new Map();
+    pendingInvites.set(userId, byRoom);
+  }
+  byRoom.set(invite.roomCode, invite);
+}
+
+export function removePendingInvite(userId, roomCode) {
+  const byRoom = pendingInvites.get(userId);
+  if (!byRoom) return;
+  byRoom.delete(roomCode);
+  if (byRoom.size === 0) pendingInvites.delete(userId);
+}
+
+export function getPendingInvites(userId) {
+  return Array.from(pendingInvites.get(userId)?.values() ?? []);
+}

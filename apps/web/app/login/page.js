@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/AuthContext';
+import BrandHeader from '@/components/BrandHeader';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -29,20 +30,9 @@ export default function LoginPage() {
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6">
-      <div className="relative mb-8 w-28">
-        <img
-          src="/logo.png"
-          alt="Sieje Hot Crew"
-          className="w-full h-auto select-none"
-          draggable={false}
-        />
-        <h1 className="pointer-events-none absolute bottom-0 right-0 translate-x-1/2 font-display text-4xl font-bold tracking-tight whitespace-nowrap text-blood">
-          MAFIA
-        </h1>
-      </div>
-      <p className="text-white/50 mb-8">Zaloguj się, żeby grać</p>
+      <BrandHeader subtitle="Zaloguj się, żeby grać" />
 
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
+      <form onSubmit={handleSubmit} className="auth-card stagger space-y-4 animate-scale-in [animation-delay:120ms]">
         <input
           type="email"
           placeholder="Email"
@@ -61,15 +51,19 @@ export default function LoginPage() {
           required
           autoComplete="current-password"
         />
-        {error && <p className="text-blood text-sm text-center">{error}</p>}
+        {error && (
+          <p key={error} style={{ '--i': 0 }} className="text-blood text-sm text-center animate-shake">
+            {error}
+          </p>
+        )}
         <button type="submit" className="btn-primary w-full" disabled={loading}>
           {loading ? 'Logowanie...' : 'Zaloguj'}
         </button>
       </form>
 
-      <p className="mt-6 text-white/40 text-sm">
+      <p className="mt-6 text-paper-200/40 text-sm animate-fade-in [animation-delay:450ms]">
         Nie masz konta?{' '}
-        <Link href="/register" className="text-white underline">
+        <Link href="/register" className="text-brass-400 underline underline-offset-4 hover:text-paper-100">
           Zarejestruj się
         </Link>
       </p>

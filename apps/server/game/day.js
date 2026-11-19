@@ -31,6 +31,18 @@ export async function resolveVotes(state, pb) {
   }
 
   const eliminatedId = candidates[0];
+
+  // Karta obrony (tryb zaawansowany, wersja „B”): jedna zgłoszona tarcza unieważnia
+  // wyrzucenie osoby z największą liczbą głosów — niezależnie od tego, kto ją zgłosił.
+  if (state.shieldUsedBy?.length) {
+    return {
+      eliminatedId: null,
+      outcome: 'shielded',
+      shieldedId: eliminatedId,
+      shieldedBy: state.shieldUsedBy.map((s) => s.userId),
+    };
+  }
+
   const targetIsBot = state.players?.get(eliminatedId)?.isBot;
   if (targetIsBot) {
     if (!state.eliminatedBots) state.eliminatedBots = new Set();

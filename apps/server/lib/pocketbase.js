@@ -32,12 +32,41 @@ async function authenticateInBackground(pb, email, password) {
   }
 }
 
+/**
+ * Token superusera może zostać unieważniony w trakcie działania serwera (zmiana hasła,
+ * `pocketbase superuser upsert`, edycja konta w panelu) — wtedy PB odpowiada 401/403
+ * („Only superusers can perform this action”), a `authStore.isValid` dalej mówi „ok”,
+ * bo sprawdza tylko datę wygaśnięcia. Ponawiamy więc żądanie raz po świeżym logowaniu.
+ */
+function retryWithFreshAdminAuth(client, email, password) {
+  const originalSend = client.send.bind(client);
+  let reauth = null;
+  client.send = async (path, options) => {
+    try {
+      return await originalSend(path, options);
+    } catch (err) {
+      const isAuthError = err?.status === 401 || err?.status === 403;
+      if (!isAuthError || path.includes('/_superusers/auth-with-password')) throw err;
+      reauth ??= (async () => {
+        client.authStore.clear();
+        await client.collection('_superusers').authWithPassword(email, password, { requestKey: null });
+        console.log('[pocketbase] token admina był nieważny — zalogowano ponownie');
+      })().finally(() => {
+        reauth = null;
+      });
+      await reauth;
+      return originalSend(path, options);
+    }
+  };
+}
+
 export function initPocketBase() {
   const url = process.env.POCKETBASE_URL || 'http://127.0.0.1:8090';
   pb = new PocketBase(url);
 
   const email = process.env.POCKETBASE_ADMIN_EMAIL;
   const password = process.env.POCKETBASE_ADMIN_PASSWORD;
+  if (email && password) retryWithFreshAdminAuth(pb, email, password);
 
   if (email && password) {
     // Fire-and-forget: serwer nie czeka na PB, auth działa w tle z retryami.

@@ -8,56 +8,216 @@ html {
 
 @layer base {
   body {
-    @apply bg-night text-white antialiased;
+    @apply bg-night text-paper-100 antialiased;
   }
+  /* Lekka ziarnistość + winieta — „stary papier / dym papierosowy” */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0.05;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.5) 100%);
+  }
+  ::selection { background: rgba(201, 162, 77, 0.35); }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: rgba(201, 162, 77, 0.25); border-radius: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  h1, h2, h3 { @apply text-paper-100; }
+}
+
+/* Zasłona prywatności gracza: stawiana przy wygaszeniu ekranu, zdejmowana po resynchronizacji. */
+html[data-privacy-cover]::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background: #0a0806;
 }
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center rounded-xl px-5 py-3 font-semibold
-           transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none
-           text-sm min-h-[48px];
+    @apply inline-flex items-center justify-center rounded-lg px-5 py-3 font-semibold
+           uppercase tracking-wider transition-all active:scale-95
+           disabled:opacity-40 disabled:pointer-events-none text-sm min-h-[48px];
   }
   .btn-primary {
-    @apply btn bg-flame-500 text-white hover:bg-flame-600;
+    @apply btn bg-flame-500 text-paper-100 border border-brass-500/60
+           shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-flame-400 hover:border-brass-400;
   }
   .btn-secondary {
-    @apply btn bg-white/10 text-white hover:bg-white/20;
+    @apply btn bg-white/5 text-paper-100 border border-white/10 hover:bg-white/10 hover:border-brass-500/40;
+  }
+  /* „Zapisz ustawienia” — celowo inny niż czerwony „Rozpocznij grę”: konturowy, mosiężny. */
+  .btn-save {
+    @apply btn normal-case tracking-normal bg-transparent text-paper-200/50 border border-white/15;
+  }
+  .btn-save.is-dirty {
+    @apply bg-amber-400/15 text-amber-200 border-amber-300/70;
+    animation: save-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes save-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(252, 211, 77, 0.55); }
+    50% { box-shadow: 0 0 0 7px rgba(252, 211, 77, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .btn-save.is-dirty { animation: none; }
   }
   .btn-town {
-    @apply btn bg-town text-white hover:bg-blue-800;
+    @apply btn bg-brass-500/15 text-brass-400 border border-brass-500/50 hover:bg-brass-500/25;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold
+           border border-white/15 text-paper-200/70 transition-colors
+           hover:text-paper-100 hover:border-brass-500/50;
   }
   .input {
-    @apply w-full rounded-xl bg-white/10 px-4 py-3 text-white placeholder:text-white/40
-           outline-none ring-1 ring-white/10 focus:ring-white/30 transition min-h-[48px];
+    @apply w-full rounded-lg bg-ink-900/80 px-4 py-3 text-paper-100 placeholder:text-paper-200/30
+           outline-none ring-1 ring-brass-500/25 focus:ring-brass-400/70 transition min-h-[48px];
   }
   .card {
-    @apply rounded-2xl bg-white/5 border border-white/10 p-4;
+    @apply rounded-xl bg-ink-800/80 border border-brass-500/20 p-4
+           shadow-[0_8px_30px_rgba(0,0,0,0.35)];
   }
+  .auth-card {
+    @apply w-full max-w-sm rounded-2xl border border-brass-500/30 bg-ink-800/85 p-6 backdrop-blur
+           shadow-[0_0_0_4px_rgba(10,8,6,0.6),0_20px_60px_rgba(0,0,0,0.6)];
+  }
+  .ornament {
+    @apply flex items-center gap-3 text-brass-500/70 text-[10px] tracking-[0.4em] uppercase;
+  }
+  .ornament::before, .ornament::after {
+    content: ''; @apply h-px flex-1 bg-gradient-to-r from-transparent to-brass-500/50;
+  }
+  .ornament::after { @apply bg-gradient-to-l; }
 
   /* Role background gradients */
   .bg-role-mafia {
-    background: radial-gradient(ellipse at 50% 0%, rgba(220, 38, 38, 0.18) 0%, transparent 55%),
+    background: radial-gradient(ellipse at 50% 0%, rgba(160, 30, 30, 0.20) 0%, transparent 55%),
       radial-gradient(ellipse at 80% 80%, rgba(127, 29, 29, 0.12) 0%, transparent 50%),
-      linear-gradient(180deg, #0a0a0f 0%, #120808 100%);
+      linear-gradient(180deg, #0e0b09 0%, #120808 100%);
   }
   .bg-role-detective {
-    background: radial-gradient(ellipse at 50% 0%, rgba(34, 197, 94, 0.15) 0%, transparent 55%),
+    background: radial-gradient(ellipse at 50% 0%, rgba(60, 140, 90, 0.14) 0%, transparent 55%),
       radial-gradient(ellipse at 20% 80%, rgba(21, 128, 61, 0.1) 0%, transparent 50%),
-      linear-gradient(180deg, #0a0a0f 0%, #081208 100%);
+      linear-gradient(180deg, #0e0b09 0%, #081208 100%);
   }
   .bg-role-doctor {
-    background: radial-gradient(ellipse at 50% 0%, rgba(59, 130, 246, 0.15) 0%, transparent 55%),
+    background: radial-gradient(ellipse at 50% 0%, rgba(70, 110, 170, 0.14) 0%, transparent 55%),
       radial-gradient(ellipse at 80% 70%, rgba(29, 78, 216, 0.1) 0%, transparent 50%),
-      linear-gradient(180deg, #0a0a0f 0%, #080c14 100%);
+      linear-gradient(180deg, #0e0b09 0%, #080c14 100%);
   }
   .bg-role-citizen {
-    background: radial-gradient(ellipse at 50% 0%, rgba(232, 185, 35, 0.16) 0%, transparent 55%),
+    background: radial-gradient(ellipse at 50% 0%, rgba(201, 162, 77, 0.16) 0%, transparent 55%),
       radial-gradient(ellipse at 30% 80%, rgba(247, 88, 13, 0.08) 0%, transparent 50%),
-      linear-gradient(180deg, #0a0a0f 0%, #100e08 100%);
+      linear-gradient(180deg, #0e0b09 0%, #100e08 100%);
   }
   .bg-role-master {
     background: radial-gradient(ellipse at 50% 0%, rgba(234, 179, 8, 0.12) 0%, transparent 55%),
-      linear-gradient(180deg, #0a0a0f 0%, #0f0e0a 100%);
+      linear-gradient(180deg, #0e0b09 0%, #0f0e0a 100%);
+  }
+
+  /* ---------- Room (pre-game) shell: "teczka z aktami" ---------- */
+  .room-shell {
+    background:
+      radial-gradient(ellipse at 50% -10%, rgba(201, 162, 77, 0.10) 0%, transparent 55%),
+      linear-gradient(180deg, #0e0b09 0%, #0b0908 100%);
+  }
+  .room-header {
+    @apply shrink-0 border-b border-brass-500/25 bg-ink-900/90 backdrop-blur px-4 py-2.5
+           flex items-center gap-3;
+  }
+  .paper-ticket {
+    @apply inline-flex items-center gap-2 rounded-md bg-paper-100 text-ink-900 px-3 py-1
+           font-mono font-bold tracking-[0.25em] text-xl shadow-[0_0_0_1px_#a8832f,0_2px_0_2px_rgba(0,0,0,0.4)]
+           transition active:scale-95;
+  }
+  .nav-item {
+    @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-paper-200/60
+           transition hover:bg-white/5 hover:text-paper-100;
+  }
+  .nav-item[aria-current='page'] {
+    @apply bg-brass-500/15 text-brass-400 ring-1 ring-brass-500/40;
+  }
+  .tab-item {
+    @apply flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-semibold
+           uppercase tracking-wide text-paper-200/50 transition min-h-[56px];
+  }
+  .tab-item[aria-current='page'] {
+    @apply text-brass-400;
+  }
+  .section-eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.2em] text-brass-400/80;
+  }
+  .panel {
+    @apply rounded-xl border border-brass-500/20 bg-ink-800/80 p-4;
+  }
+  .setting-row {
+    @apply flex items-start gap-3 rounded-lg bg-white/[0.03] px-3 py-2.5 text-sm text-paper-100/80
+           cursor-pointer;
+  }
+  .setting-row input[type='checkbox'] {
+    @apply mt-0.5 h-4 w-4 shrink-0 accent-brass-400;
+  }
+}
+
+/* ---------- Animacje: stagger + dostępność ---------- */
+@layer components {
+  /* Dzieci pojawiają się kolejno. Opóźnienie = --i * --stagger-step.
+     Własną kolejność ustawisz inline: style={{ '--i': index }}. */
+  .stagger > * {
+    animation: fade-up 0.4s ease-out backwards;
+    animation-delay: calc(var(--i, 0) * var(--stagger-step, 60ms));
+  }
+  .stagger > :nth-child(1) { --i: 0; }
+  .stagger > :nth-child(2) { --i: 1; }
+  .stagger > :nth-child(3) { --i: 2; }
+  .stagger > :nth-child(4) { --i: 3; }
+  .stagger > :nth-child(5) { --i: 4; }
+  .stagger > :nth-child(6) { --i: 5; }
+  .stagger > :nth-child(7) { --i: 6; }
+  .stagger > :nth-child(8) { --i: 7; }
+  .stagger > :nth-child(n + 9) { --i: 8; }
+
+  /* Jak .stagger, ale dla wnuków: <div class="stagger-deep"><KomponentZListą/></div>
+     (np. wiersze komponentu, którego nie edytujemy). */
+  .stagger-deep > * > * {
+    animation: slide-in-right 0.35s ease-out backwards;
+    animation-delay: calc(var(--i, 0) * var(--stagger-step, 45ms));
+  }
+  .stagger-deep > * > :nth-child(1) { --i: 0; }
+  .stagger-deep > * > :nth-child(2) { --i: 1; }
+  .stagger-deep > * > :nth-child(3) { --i: 2; }
+  .stagger-deep > * > :nth-child(4) { --i: 3; }
+  .stagger-deep > * > :nth-child(5) { --i: 4; }
+  .stagger-deep > * > :nth-child(6) { --i: 5; }
+  .stagger-deep > * > :nth-child(7) { --i: 6; }
+  .stagger-deep > * > :nth-child(n + 8) { --i: 7; }
+
+  /* Szkielet ładowania (skeleton) */
+  .shimmer-bg {
+    background-image: linear-gradient(90deg, transparent 0%, rgba(201, 162, 77, 0.12) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2.2s linear infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

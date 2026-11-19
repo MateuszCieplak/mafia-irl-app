@@ -294,7 +294,31 @@ function needsBuild() {
   }
 }
 
+function isPortBusy(port) {
+  return new Promise((r) => {
+    const s = net.connect(port, '127.0.0.1');
+    s.once('connect', () => {
+      s.destroy();
+      r(true);
+    });
+    s.once('error', () => r(false));
+  });
+}
+
 async function main() {
+  // Druga kopia nie może ruszać bazy (superuser upsert unieważnia token admina działającej gry).
+  const busy = [];
+  for (const port of [PARTY_PORT, PB_PORT, SOCKET_PORT, WEB_PORT]) {
+    if (await isPortBusy(port)) busy.push(port);
+  }
+  if (busy.length) {
+    console.error(
+      `[party] Gra już działa (zajęte porty: ${busy.join(', ')}). ` +
+        'Użyj otwartego okna albo zamknij je (Ctrl+C) przed ponownym uruchomieniem.'
+    );
+    process.exit(1);
+  }
+
   if (!existsSync(join(repoRoot, '.env'))) {
     console.error('[party] Brak pliku .env w katalogu głównym — skopiuj .env.example do .env i uzupełnij.');
     process.exit(1);

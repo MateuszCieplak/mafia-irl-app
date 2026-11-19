@@ -44,6 +44,7 @@ export default function PhaseResultScreen({
     ? players?.find((p) => p.id === result.eliminatedPlayerId)
     : null;
   const victimName = victim?.username || result.eliminatedPlayerId;
+
   const isMe = Boolean(result.eliminatedPlayerId) && result.eliminatedPlayerId === currentUserId;
 
   const eyebrow = isNight ? `Noc ${round || ''}`.trim() : `Głosowanie · runda ${round || ''}`.trim();
@@ -63,6 +64,11 @@ export default function PhaseResultScreen({
     headline = 'Spokojna noc';
     detail = 'Nikt nie zginął';
     accent = 'safe';
+  } else if (result.outcome === 'no_elimination') {
+    icon = '⚖️';
+    headline = 'Nikt nie odpadł';
+    detail = 'Podczas głosowania nikt nie odpadł';
+    accent = 'neutral';
   } else if (result.outcome === 'tie') {
     icon = '⚖️';
     headline = 'Remis';
