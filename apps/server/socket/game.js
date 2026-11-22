@@ -17,6 +17,7 @@ import {
 } from '../game/cards.js';
 import { buildRoomPlayerList } from '../game/roomPlayers.js';
 import { ensureAdminAuth } from '../lib/pocketbase.js';
+import { scheduleLobbyRemoval } from '../game/lobbyGrace.js';
 import {
   advancePhaseInternal,
   clearPhaseTimer,
@@ -91,6 +92,7 @@ export function registerGameHandlers(io, socket, pb) {
       state.advancing = false;
       state.currentRoundId = round.id;
       state.insightLog = []; // nowa gra = pusta historia podglądu live
+      state.gameSummary = null;
       assignCards(state); // tryb zaawansowany: karty mocy losowane razem z rolami
 
       const meta = roomEventMeta(state);
@@ -248,7 +250,15 @@ export function registerGameHandlers(io, socket, pb) {
       state.resolveEnteredAt = null;
       state.currentRoundId = null;
       state.insightLog = [];
+      state.gameSummary = null;
       resetCardState(state);
+
+      // Gracze, którzy w trakcie gry zamknęli aplikację, dostają w lobby okres
+      // karencji — inaczej wisieliby jako „offline” i blokowali start nowej gry.
+      for (const [userId, info] of state.players.entries()) {
+        if (userId === state.hostId || info.isBot || info.socketId) continue;
+        scheduleLobbyRemoval(io, pb, state, userId);
+      }
 
       io.to(`room:${state.code}`).emit('room_reset_to_lobby', {
         players: buildRoomPlayerList(state),
@@ -474,6 +484,8 @@ export function registerGameHandlers(io, socket, pb) {
       round: state.round,
       status: state.status,
       winner: isFinished ? state.winner ?? null : undefined,
+      // Podsumowanie (przebieg rund, szanse) — po końcu gry jawne dla wszystkich.
+      summary: isFinished ? state.gameSummary ?? null : undefined,
       role: state.roles?.[socket.userId] || null,
       isMaster,
       settings: state.settings,

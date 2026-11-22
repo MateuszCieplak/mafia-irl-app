@@ -18,7 +18,7 @@ import { computeRoleLimits } from '@/lib/roleLimits';
 export default function RoomPage() {
   const { code } = useParams();
   const { user } = useAuth();
-  const { emit, on, connected } = useSocket();
+  const { emit, on, connected, reconnect, isConnected } = useSocket();
   const router = useRouter();
   const [players, setPlayers] = useState([]);
   const [joined, setJoined] = useState(false);
@@ -38,6 +38,11 @@ export default function RoomPage() {
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [closingRoom, setClosingRoom] = useState(false);
   const [tab, setTab] = useState('players');
+  // Dołączanie: błąd ostateczny (pokój nie istnieje / nie jesteś uczestnikiem)
+  // albo „trwa za długo” — zamiast wiecznego „Dołączanie do pokoju…”.
+  const [joinError, setJoinError] = useState(null);
+  const [joinSlow, setJoinSlow] = useState(false);
+  const joinFailures = useRef(0);
 
   const minPlayers = 4;
   const isMaster = useMemo(
@@ -80,20 +85,67 @@ export default function RoomPage() {
     }
   }, [emit]);
 
+  // Dołączenie + stan pokoju. Telefon po wybudzeniu potrafi mieć „martwy”
+  // socket, który klient uważa za połączony — wtedy join_room nie dostaje
+  // odpowiedzi, a strona wisiała na „Dołączanie do pokoju…”. Krótki limit
+  // i restart połączenia (efekt na `connected` spróbuje ponownie).
+  const joinAndSync = useCallback(
+    async (timeoutMs = 6000) => {
+      const res = await emit('join_room', { code }, { timeoutMs });
+      if (res?.ok) {
+        joinFailures.current = 0;
+        setPlayers(res.players || []);
+        setJoined(true);
+        setJoinError(null);
+        setJoinSlow(false);
+        const st = await emit('get_game_state', {}, { timeoutMs });
+        if (st?.settings) setRoomSettings(st.settings);
+        if (st?.status) setRoomStatus(st.status);
+        return true;
+      }
+      if (res?.error === 'room_not_found' || res?.error === 'not_a_participant') {
+        setJoinError(res.error);
+        return false;
+      }
+      joinFailures.current += 1;
+      if (joinFailures.current >= 2) setJoinSlow(true);
+      reconnect();
+      return false;
+    },
+    [emit, code, reconnect],
+  );
+
+  useEffect(() => {
+    if (joined || joinError) return;
+    const t = setTimeout(() => setJoinSlow(true), 8000);
+    return () => clearTimeout(t);
+  }, [joined, joinError]);
+
+  // Powrót do karty / odblokowanie telefonu: sprawdzamy, czy nadal jesteśmy
+  // w pokoju (serwer mógł nas oznaczyć jako offline) — i dołączamy ponownie.
+  useEffect(() => {
+    let hiddenAt = null;
+    function onVisibility() {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now();
+        return;
+      }
+      if (hiddenAt === null || Date.now() - hiddenAt < 1000) {
+        hiddenAt = null;
+        return;
+      }
+      hiddenAt = null;
+      if (!isConnected()) reconnect();
+      else joinAndSync(2500);
+    }
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [joinAndSync, isConnected, reconnect]);
+
   useEffect(() => {
     if (!connected) return;
 
-    emit('join_room', { code }).then((res) => {
-      if (res?.ok) {
-        setPlayers(res.players || []);
-        setJoined(true);
-      }
-    });
-
-    emit('get_game_state', {}).then((res) => {
-      if (res?.settings) setRoomSettings(res.settings);
-      if (res?.status) setRoomStatus(res.status);
-    });
+    joinAndSync();
 
     const syncPlayers = (list) => setPlayers(list || []);
 
@@ -125,7 +177,7 @@ export default function RoomPage() {
       offSettings?.();
       offReset?.();
     };
-  }, [connected, code, user?.id, emit, on, router]);
+  }, [connected, code, user?.id, emit, on, router, joinAndSync]);
 
   useEffect(() => {
     if (!joined || !connected) return;
@@ -309,9 +361,50 @@ export default function RoomPage() {
   const inviteCandidates = onlineOthers.filter((u) => !playerIds.has(u.id));
 
   if (!joined) {
+    if (joinError) {
+      return (
+        <div className="stagger flex-1 flex flex-col items-center justify-center text-center px-6 gap-4">
+          <span className="text-4xl">🚪</span>
+          <h2 className="font-display text-xl font-bold">
+            {joinError === 'room_not_found' ? 'Pokój już nie istnieje' : 'Nie jesteś w tym pokoju'}
+          </h2>
+          <p className="text-white/50 text-sm max-w-xs">
+            {joinError === 'room_not_found'
+              ? 'Host zamknął ten pokój. Poproś o nowy kod.'
+              : 'Gra w tym pokoju już trwa, a Ciebie nie było na liście graczy.'}
+          </p>
+          <button type="button" onClick={() => router.push('/lobby')} className="btn-primary">
+            Strona główna
+          </button>
+        </div>
+      );
+    }
     return (
-      <div className="flex-1 flex items-center justify-center text-white/40 animate-fade-in">
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 text-white/40 animate-fade-in px-6 text-center">
         <span className="animate-pulse-soft">Dołączanie do pokoju...</span>
+        {joinSlow && (
+          <div className="flex flex-col items-center gap-3 animate-fade-up">
+            <p className="text-xs text-white/40 max-w-xs">
+              To trwa dłużej niż zwykle — sprawdź internet albo spróbuj ponownie.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="btn-primary text-sm"
+                onClick={() => {
+                  setJoinSlow(false);
+                  if (isConnected()) joinAndSync();
+                  else reconnect();
+                }}
+              >
+                Spróbuj ponownie
+              </button>
+              <button type="button" className="btn-ghost text-sm" onClick={() => router.push('/lobby')}>
+                Strona główna
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -420,6 +513,19 @@ export default function RoomPage() {
           </div>
         )}
       </header>
+
+      {roomStatus === 'finished' && !isMaster && (
+        <div className="shrink-0 border-b border-brass-500/25 bg-brass-500/10 px-4 py-2 text-xs text-paper-100/80 flex items-center justify-between gap-3 animate-fade-in">
+          <span>Gra zakończona — czekamy, aż master wróci do pokoju i przygotuje kolejną.</span>
+          <button
+            type="button"
+            onClick={() => router.push(`/game/${code}`)}
+            className="shrink-0 text-brass-400 font-semibold hover:underline"
+          >
+            Podsumowanie
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 flex flex-col md:flex-row">
         <nav className="animate-slide-in-left [animation-delay:100ms] hidden md:flex w-56 shrink-0 flex-col gap-1 border-r border-brass-500/20 bg-ink-900/60 p-3">

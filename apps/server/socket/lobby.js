@@ -3,12 +3,11 @@ import { presenceSetRoom, presenceClearRoom, removePendingInvite } from '../game
 import { buildRoomPlayerList } from '../game/roomPlayers.js';
 import { addBotToRoom } from '../game/bots.js';
 import { ensureAdminAuth } from '../lib/pocketbase.js';
+import { clearDisconnectTimer, scheduleLobbyRemoval } from '../game/lobbyGrace.js';
+import { displayNameFromUserRecord } from '../lib/userDisplayName.js';
 
-function clearDisconnectTimer(state, userId) {
-  const t = state?.disconnectTimers?.get(userId);
-  if (t) clearTimeout(t);
-  state?.disconnectTimers?.delete(userId);
-}
+const ACTIVE_ROOM_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+const STATUS_PRIORITY = { in_progress: 0, finished: 1, lobby: 2 };
 
 function roomCreatorEmailAllowed(socket) {
   if (process.env.MAFIA_TEST_AUTH === '1') return true;
@@ -130,7 +129,8 @@ export function registerLobbyHandlers(io, socket, pb) {
       }
 
       const room = records.items[0];
-      const isLobby = room.status === 'lobby';
+      const memStatus = rooms.get(room.id)?.status;
+      const isLobby = (memStatus ?? room.status) === 'lobby';
 
       const existing = await pb.collection('room_players').getList(1, 1, {
         filter: `room_id = "${room.id}" && user_id = "${socket.userId}"`,
@@ -138,6 +138,7 @@ export function registerLobbyHandlers(io, socket, pb) {
       });
 
       let state = rooms.get(room.id);
+      const freshState = !state;
       if (!state) {
         state = {
           id: room.id,
@@ -170,28 +171,37 @@ export function registerLobbyHandlers(io, socket, pb) {
         });
       }
 
-      // Keep server in-memory status/settings in sync with DB (covers restarts + rejoin).
-      state.status = room.status;
-      state.settings = normalizeRoomSettings(room.settings);
-      state.hostId = room.host_id;
+      // Stan w pamięci jest źródłem prawdy, dopóki serwer żyje. Z bazy bierzemy go
+      // tylko po restarcie (świeży stan) — inaczej join_room, który odczytał
+      // jeszcze 'finished', a skończył się już po „Wróć do pokoju” mastera,
+      // cofał pokój z lobby do stanu „gra zakończona”.
+      if (freshState) {
+        state.status = room.status;
+        state.settings = normalizeRoomSettings(room.settings);
+        state.hostId = room.host_id;
+      }
 
       // Rejoin = update socketId for "online" presence.
       state.players.set(socket.userId, { socketId: socket.id, username: socket.username });
       // If there was a pending lobby disconnect cleanup, cancel it on successful join/rejoin.
       clearDisconnectTimer(state, socket.userId);
 
-      // If this is a rejoin during an in-progress game and the in-memory player map is incomplete
-      // (e.g. server restart), hydrate known participants so online/offline sync is correct.
-      if (!isLobby && state.players.size === 1) {
+      // Po restarcie serwera mapa graczy w pamięci jest pusta — odtwarzamy
+      // uczestników z bazy (offline), żeby lista i obecność były poprawne.
+      if (freshState) {
         try {
           const participants = await pb.collection('room_players').getFullList({
             filter: `room_id = "${room.id}"`,
+            expand: 'user_id',
             requestKey: null,
           });
           for (const p of participants) {
-            if (!state.players.has(p.user_id)) {
-              state.players.set(p.user_id, { socketId: null, username: p.username || p.user_id });
-            }
+            if (state.players.has(p.user_id)) continue;
+            const username = p.expand?.user_id
+              ? displayNameFromUserRecord(p.expand.user_id)
+              : p.user_id;
+            state.players.set(p.user_id, { socketId: null, username });
+            if (state.status === 'lobby') scheduleLobbyRemoval(io, pb, state, p.user_id);
           }
         } catch (err) {
           // Non-fatal: presence list will at least include the rejoined user.
@@ -227,17 +237,91 @@ export function registerLobbyHandlers(io, socket, pb) {
     }
   });
 
-  socket.on('leave_room', async () => {
-    if (!socket.roomCode) return;
-    const state = rooms.get(socket.roomId);
-    if (state) {
-      state.players.delete(socket.userId);
-      io.to(`room:${socket.roomCode}`).emit('player_left', { userId: socket.userId });
+  // Gracz świadomie wychodzi z pokoju. W lobby znika całkiem (także z bazy),
+  // w trakcie/po grze zostaje uczestnikiem — tylko odłączamy ten socket.
+  // `code` pozwala wyjść z pokoju, do którego ten socket jeszcze nie dołączył
+  // (np. z banera „Jesteś w pokoju…” po ponownym otwarciu aplikacji).
+  socket.on('leave_room', async (data, callback) => {
+    try {
+      const code = socket.roomCode || data?.code;
+      if (!code) return callback?.({ ok: true });
+      const state = Array.from(rooms.values()).find((r) => r.code === code);
+
+      if (state && state.players.has(socket.userId)) {
+        clearDisconnectTimer(state, socket.userId);
+        if (state.status === 'lobby' && socket.userId !== state.hostId) {
+          state.players.delete(socket.userId);
+          try {
+            await ensureAdminAuth();
+            const rp = await pb.collection('room_players').getList(1, 1, {
+              filter: `room_id = "${state.id}" && user_id = "${socket.userId}"`,
+              requestKey: null,
+            });
+            if (rp.items[0]) await pb.collection('room_players').delete(rp.items[0].id);
+          } catch (err) {
+            console.error('[lobby] leave_room cleanup:', err.message);
+          }
+          io.to(`room:${code}`).emit('player_left', { userId: socket.userId });
+        } else {
+          const p = state.players.get(socket.userId);
+          if (p && p.socketId === socket.id) {
+            p.socketId = null;
+            io.to(`room:${code}`).emit('room_players_sync', { players: buildRoomPlayerList(state) });
+          }
+        }
+      }
+
+      socket.leave(`room:${code}`);
+      if (socket.roomCode === code) {
+        presenceClearRoom(socket.userId);
+        socket.roomCode = null;
+        socket.roomId = null;
+      }
+      callback?.({ ok: true });
+    } catch (err) {
+      console.error('[lobby] leave_room error:', err.message);
+      callback?.({ ok: false, error: err.message });
     }
-    socket.leave(`room:${socket.roomCode}`);
-    presenceClearRoom(socket.userId);
-    socket.roomCode = null;
-    socket.roomId = null;
+  });
+
+  // Po ponownym otwarciu aplikacji (zamknięty Chrome, nowa karta) klient pyta,
+  // czy gracz jest w jakimś pokoju — wtedy pokazuje „Wróć do gry”.
+  socket.on('get_my_active_room', async (_data, callback) => {
+    try {
+      const found = [];
+      for (const st of rooms.values()) {
+        if (!st.players.has(socket.userId)) continue;
+        found.push({ code: st.code, status: st.status, isMaster: st.hostId === socket.userId });
+      }
+
+      // Restart serwera: pamięć pusta — szukamy w bazie świeżych, niezakończonych pokoi.
+      if (found.length === 0) {
+        try {
+          await ensureAdminAuth();
+          const rps = await pb.collection('room_players').getFullList({
+            filter: `user_id = "${socket.userId}"`,
+            expand: 'room_id',
+            requestKey: null,
+          });
+          const now = Date.now();
+          for (const rp of rps) {
+            const room = rp.expand?.room_id;
+            if (!room || !['in_progress', 'lobby'].includes(room.status)) continue;
+            const updated = Date.parse(room.updated || room.created || '');
+            if (Number.isFinite(updated) && now - updated > ACTIVE_ROOM_MAX_AGE_MS) continue;
+            found.push({ code: room.code, status: room.status, isMaster: room.host_id === socket.userId });
+          }
+        } catch (err) {
+          console.error('[lobby] get_my_active_room db lookup failed:', err.message);
+        }
+      }
+
+      found.sort((a, b) => (STATUS_PRIORITY[a.status] ?? 9) - (STATUS_PRIORITY[b.status] ?? 9));
+      callback?.({ ok: true, room: found[0] ?? null });
+    } catch (err) {
+      console.error('[lobby] get_my_active_room error:', err.message);
+      callback?.({ ok: false, error: err.message });
+    }
   });
 
   socket.on('add_bot', async (_data, callback) => {
