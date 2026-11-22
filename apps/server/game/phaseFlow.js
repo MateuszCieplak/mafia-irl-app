@@ -2,6 +2,7 @@ import { resolveNight } from './night.js';
 import { resolveVotes, checkWinCondition } from './day.js';
 import { roomEventMeta, emitMasterInsight } from './events.js';
 import { scheduleBotPhaseActions } from './bots.js';
+import { buildGameSummary } from './summary.js';
 import { TURN_PHASE_ROLE, turnCount, currentTurnActorId } from './turns.js';
 import {
   BASE_PHASES,
@@ -219,10 +220,19 @@ async function emitGameOver(io, state, winner, pb, callback) {
   state.winner = winner;
   clearPhaseTimer(state);
 
+  try {
+    state.gameSummary = buildGameSummary(state, winner);
+  } catch (err) {
+    // Podsumowanie to dodatek — jego błąd nie może zablokować końca gry.
+    console.error('[game] buildGameSummary failed:', err.message);
+    state.gameSummary = null;
+  }
+
   const meta = phaseMeta(state);
   io.to(`room:${state.code}`).emit('game_over', {
     winner,
     roles: state.roles,
+    summary: state.gameSummary,
     ...meta,
   });
 

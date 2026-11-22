@@ -27,6 +27,7 @@ import net from 'net';
 import { config as loadEnv } from 'dotenv';
 import qrcode from 'qrcode-terminal';
 import { detectLanIPv4 } from './detect-lan-ip.mjs';
+import { createPanelLink } from './panel-link.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 loadEnv({ path: join(repoRoot, '.env') });
@@ -54,6 +55,15 @@ let shuttingDown = false;
 function log(tag, msg) {
   console.log(`[${tag}] ${msg}`);
 }
+
+// Panel na stronie (opcjonalny): publikuje adres tunelu pod stałym linkiem. Tryb --lan nie publikuje.
+const panel = LAN_ONLY
+  ? null
+  : createPanelLink({
+      panelUrl: process.env.SIEJE_PANEL_URL,
+      token: process.env.MAFIA_PUBLISH_TOKEN,
+      log,
+    });
 
 function expandHome(p) {
   return p?.startsWith('~') ? join(homedir(), p.slice(1)) : p;
@@ -170,7 +180,9 @@ function shutdown(code = 0) {
     if (IS_WIN) spawnSync('taskkill', ['/pid', String(c.pid), '/T', '/F'], { stdio: 'ignore' });
     else c.kill('SIGTERM');
   }
-  setTimeout(() => process.exit(code), 500);
+  // Wycofanie adresu z panelu (maks. ~1,5 s), równolegle z 500 ms na domknięcie procesów potomnych.
+  const unpublish = panel?.published ? panel.unpublish(1500) : Promise.resolve();
+  Promise.all([unpublish, new Promise((r) => setTimeout(r, 500))]).finally(() => process.exit(code));
 }
 
 process.on('SIGINT', () => shutdown(0));
@@ -386,16 +398,23 @@ async function main() {
   }
 
   log('tunel', 'uruchamiam tunel Cloudflare…');
-  let announced = false;
+  let announcedUrl = null;
   run('tunel', cfBin, ['tunnel', '--no-autoupdate', '--url', `http://127.0.0.1:${PARTY_PORT}`], {
     onLine: (line) => {
       const m = line.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
-      if (m && !announced) {
-        announced = true;
-        log('tunel', `adres przydzielony: ${m[0]} — czekam, aż zacznie działać w DNS…`);
-        waitForPublicDns(new URL(m[0]).hostname).then(() => announce(m[0], lanUrl));
+      if (m && m[0] !== announcedUrl) {
+        // Pierwszy adres albo nowy po restarcie tunelu: ogłoś i opublikuj w panelu.
+        const url = m[0];
+        announcedUrl = url;
+        log('tunel', `adres przydzielony: ${url}, czekam, aż zacznie działać w DNS…`);
+        waitForPublicDns(new URL(url).hostname).then(async () => {
+          if (shuttingDown || announcedUrl !== url) return;
+          if (panel) await panel.publish(url, lanUrl);
+          announce(url, lanUrl);
+        });
         return false;
       }
+      if (m) return false;
       return /ERR|error|failed/i.test(line) && !/Cannot determine default configuration/.test(line)
         ? undefined
         : false;
@@ -432,11 +451,18 @@ function announce(url, lanUrl) {
   const bar = '═'.repeat(60);
   console.log(`\n${bar}`);
   console.log('  🎭  MAFIA — gra działa!');
-  console.log(`\n  Adres dla graczy:   ${url}`);
+  // Z panelem QR prowadzi na stały link (przekierowuje na aktualny tunel).
+  const qrTarget = panel ? panel.playUrl : url;
+  if (panel) {
+    console.log(`\n  Panel (stały link): ${panel.playUrl}`);
+    console.log(`  Bezpośrednio:       ${url}`);
+  } else {
+    console.log(`\n  Adres dla graczy:   ${url}`);
+  }
   if (lanUrl) console.log(`  W tej samej Wi‑Fi:  ${lanUrl}  (działa też bez internetu)`);
   console.log(`  Panel PocketBase:   http://localhost:${PARTY_PORT}/pb/_/`);
   console.log('\n  Zeskanuj telefonem:\n');
-  qrcode.generate(url, { small: true }, (qr) => {
+  qrcode.generate(qrTarget, { small: true }, (qr) => {
     console.log(qr.replace(/^/gm, '  '));
     console.log(`  Zatrzymanie: Ctrl+C\n${bar}\n`);
   });

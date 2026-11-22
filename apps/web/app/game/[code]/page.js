@@ -15,6 +15,7 @@ import MafiaChatDrawer from '@/components/MafiaChatDrawer';
 import RoleCornerMenu from '@/components/RoleCornerMenu';
 import { resolveAvatarUrl } from '@/lib/avatar';
 import AnimatedModal from '@/components/AnimatedModal';
+import GameOverScreen from '@/components/GameOverScreen';
 import PhaseResultScreen from '@/components/PhaseResultScreen';
 import PlayerList from '@/components/PlayerList';
 import CardUseModal from '@/components/CardUseModal';
@@ -83,6 +84,10 @@ export default function GamePage() {
   // Na kogo oddałem głos w głosowaniu dziennym (null = pominięcie / brak głosu).
   const [myVoteTarget, setMyVoteTarget] = useState(null);
   const [gameOver, setGameOver] = useState(null);
+  // Master wrócił z ekranu końca gry do pokoju (pokój znów jest w lobby).
+  const [masterInLobby, setMasterInLobby] = useState(false);
+  const gameOverRef = useRef(null);
+  gameOverRef.current = gameOver;
   const [insightFeed, setInsightFeed] = useState([]);
   // Mafia wybrała różne cele — { votes: { mafiosoId: targetId } } albo null.
   const [mafiaDisagreement, setMafiaDisagreement] = useState(null);
@@ -180,6 +185,13 @@ export default function GamePage() {
     router.push(`/room/${code}`);
   }, [isMaster, emit, router, code]);
 
+  const handleGoHome = useCallback(() => {
+    // Gracz świadomie wychodzi: w lobby (po powrocie mastera) zwalnia miejsce,
+    // po grze pozostaje uczestnikiem (baner „wróć” na stronie głównej).
+    if (!isMaster && masterInLobby) emit('leave_room', { code });
+    router.push('/lobby');
+  }, [isMaster, masterInLobby, emit, router, code]);
+
   // Avoid showing loader on reconnects after first load
   const initialLoadDone = useRef(false);
 
@@ -238,7 +250,20 @@ export default function GamePage() {
       }
       // Gra już zakończona (np. odświeżenie strony po "Zakończ grę") — pokaż ekran końca gry.
       if (res.status === 'finished') {
-        setGameOver({ winner: res.winner ?? null, roles: res.roles });
+        setGameOver((prev) => ({
+          winner: res.winner ?? null,
+          roles: res.roles,
+          summary: res.summary ?? prev?.summary ?? null,
+        }));
+      } else if (res.status === 'in_progress') {
+        // Nowa gra wystartowała, a ten ekran wciąż pokazywał koniec poprzedniej.
+        setGameOver(null);
+        setMasterInLobby(false);
+      } else if (res.status === 'lobby') {
+        // Pokój wrócił do lobby (np. telefon spał, gdy master kliknął „Wróć do pokoju”).
+        // Ekran końca gry zostaje do obejrzenia; bez niego — od razu do pokoju.
+        setMasterInLobby(true);
+        if (!gameOverRef.current) router.replace(`/room/${code}`);
       }
     }
     initialLoadDone.current = true;
@@ -246,7 +271,7 @@ export default function GamePage() {
     // Pierwszy udany stan kończy ekran „Synchronizuję…” — od razu widać werdykt.
     if (res?.ok) setSyncing(false);
     return Boolean(res?.ok);
-  }, [emit, user?.id]);
+  }, [emit, user?.id, router, code]);
 
   // Po wygaszeniu ekranu strona jest zamrożona: eventy z tego czasu przepadają,
   // a websocket bywa martwy tylko po stronie serwera („zombie” — klient nadal
@@ -332,6 +357,14 @@ export default function GamePage() {
       on('game_started', (data) => {
         setRole(data.role);
         setCards(data.cards ?? []);
+        // Kolejna gra w tym samym pokoju — zamykamy ekran końca poprzedniej.
+        setGameOver(null);
+        setMasterInLobby(false);
+        setInsightFeed([]);
+        loadState();
+      }),
+      on('room_reset_to_lobby', () => {
+        setMasterInLobby(true);
       }),
       on('phase_changed', (data) => {
         setPhase(data.phase);
@@ -842,70 +875,16 @@ export default function GamePage() {
   }
 
   if (gameOver) {
-    const mafiaWon = gameOver.winner === 'mafia';
-    const townWon = gameOver.winner === 'town';
-    const endedByMaster = !mafiaWon && !townWon;
-    const bgClassOver = mafiaWon
-      ? 'bg-role-mafia'
-      : townWon
-      ? 'bg-role-detective'
-      : 'bg-night';
-    const titleClassOver = mafiaWon
-      ? 'text-role-mafia'
-      : townWon
-      ? 'text-role-detective'
-      : 'text-white';
-    const titleTextOver = mafiaWon
-      ? 'Mafia wygrywa!'
-      : townWon
-      ? 'Miasto wygrywa!'
-      : 'Gra zakończona';
-
     return (
-      <div
-        className={`h-dvh flex flex-col items-center px-6 gap-5 overflow-y-auto py-10 ${bgClassOver}`}
-      >
-        {/* Spacer to keep content vertically centered when it fits, without cutting off the top when it doesn't */}
-        <div className="flex-1 min-h-0" />
-
-        {/* Winner banner */}
-        <div className="text-center animate-reveal-in shrink-0">
-          <p className="text-xs uppercase tracking-[0.3em] text-white/40 mb-2">Koniec gry</p>
-          <h1 className={`font-display text-3xl sm:text-5xl font-bold ${titleClassOver}`}>
-            {titleTextOver}
-          </h1>
-          <p className="text-white/40 text-sm mt-2">
-            {endedByMaster
-              ? `Master zakończył rozgrywkę w rundzie ${round} · wszystkie role ujawnione`
-              : `Runda ${round} · wszystkie role ujawnione`}
-          </p>
-        </div>
-
-        {/* Player list with roles */}
-        <div className="w-full max-w-md shrink-0">
-          <PlayerList players={players} showRoles gridLayout />
-        </div>
-
-        {/* Navigation buttons */}
-        <div className="flex flex-col sm:flex-row gap-3 mt-2 w-full max-w-xs animate-reveal-in shrink-0">
-          <button
-            type="button"
-            onClick={handleReturnToRoom}
-            className="btn-primary flex-1 text-center"
-          >
-            Wróć do pokoju
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push('/lobby')}
-            className="btn-ghost flex-1 text-center"
-          >
-            Strona główna
-          </button>
-        </div>
-
-        <div className="flex-1 min-h-0" />
-      </div>
+      <GameOverScreen
+        gameOver={gameOver}
+        players={players}
+        round={round}
+        isMaster={isMaster}
+        masterInLobby={masterInLobby}
+        onReturnToRoom={handleReturnToRoom}
+        onHome={handleGoHome}
+      />
     );
   }
 

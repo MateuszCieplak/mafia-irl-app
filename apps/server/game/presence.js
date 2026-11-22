@@ -34,7 +34,11 @@ export function presenceClearRoom(userId) {
   if (p) p.roomCode = null;
 }
 
-export function presenceRemove(userId) {
+/** Usuwa obecność tylko, gdy należy do rozłączanego socketu (nie do nowszego połączenia). */
+export function presenceRemove(userId, socketId) {
+  const p = presence.get(userId);
+  if (!p) return;
+  if (socketId && p.socketId !== socketId) return;
   presence.delete(userId);
 }
 

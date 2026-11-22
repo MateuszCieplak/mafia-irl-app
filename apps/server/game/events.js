@@ -28,6 +28,7 @@ export function emitMasterInsight(io, state, payload) {
   const entry = {
     ...payload,
     ...roomEventMeta(state),
+    round: state.round ?? 0,
     seq: state.insightLog.length + 1,
   };
   state.insightLog.push(entry);

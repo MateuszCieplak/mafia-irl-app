@@ -3,6 +3,7 @@ import './globals.css';
 import { AuthProvider } from '@/lib/AuthContext';
 import { SocketProvider } from '@/lib/useSocket';
 import RoomInviteListener from '@/components/RoomInviteListener';
+import ActiveRoomBanner from '@/components/ActiveRoomBanner';
 
 const oswald = Oswald({ subsets: ['latin'], variable: '--font-body' });
 const cinzel = Cinzel({ subsets: ['latin'], variable: '--font-display' });
@@ -34,6 +35,7 @@ export default function RootLayout({ children }) {
           <SocketProvider>
             {children}
             <RoomInviteListener />
+            <ActiveRoomBanner />
           </SocketProvider>
         </AuthProvider>
       </body>
