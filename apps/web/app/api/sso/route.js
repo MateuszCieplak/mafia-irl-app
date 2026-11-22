@@ -104,7 +104,8 @@ export async function POST(request) {
         username,
         name: name || username,
       });
-    } else if (name && (user.name !== name || user.username !== base)) {
+    } else if (name && user.name !== name) {
+      // Tylko gdy nazwa w panelu się zmieniła: inaczej nazwa z sufiksem dostawałaby nowy sufiks przy każdym logowaniu.
       const patch = { name };
       if (user.username !== base) patch.username = await uniqueUsername(admin, base, user.id);
       user = await admin.collection('users').update(user.id, patch);
