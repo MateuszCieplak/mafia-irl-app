@@ -406,7 +406,7 @@ async function main() {
         // Pierwszy adres albo nowy po restarcie tunelu: ogłoś i opublikuj w panelu.
         const url = m[0];
         announcedUrl = url;
-        log('tunel', `adres przydzielony: ${url} — czekam, aż zacznie działać w DNS…`);
+        log('tunel', `adres przydzielony: ${url}, czekam, aż zacznie działać w DNS…`);
         waitForPublicDns(new URL(url).hostname).then(async () => {
           if (shuttingDown || announcedUrl !== url) return;
           if (panel) await panel.publish(url, lanUrl);
