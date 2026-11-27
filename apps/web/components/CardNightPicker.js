@@ -1,11 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { CARD_INFO, mafiaCountLabel } from '@/lib/cards';
+import { CARD_INFO, mafiaCountLabel, roleLabelPl } from '@/lib/cards';
 import { PlayerAvatar, labelForPlayer } from '@/components/RolePlayerList';
 
 const TITLES = {
   check: 'Sprawdzenie',
+  reveal: 'Odkrycie',
   alibi: 'Alibi',
   false_lead: 'Fałszywy trop',
   jam: 'Zakłócenie',
@@ -13,6 +14,7 @@ const TITLES = {
 
 const PROMPTS = {
   check: (n) => `Wybierz ${n} ${n === 1 ? 'gracza' : 'graczy'} — dowiesz się, ilu z nich to mafia.`,
+  reveal: () => 'Wybierz dowolnego żywego gracza — dowiesz się, jaką ma rolę.',
   alibi: () => 'Wybierz mafiozę, który ma wyglądać na „czystego” przy najbliższym Sprawdzeniu.',
   false_lead: () => 'Wybierz niewinnego gracza, który ma wyglądać na mafię przy najbliższym Sprawdzeniu.',
   jam: () => 'Potwierdź aktywację — następne Sprawdzenie obywatela pokaże błędny wynik.',
@@ -70,7 +72,14 @@ export default function CardNightPicker({ prompt, players, onSubmit, result, err
           </p>
         </div>
       )}
-      {done && type !== 'check' && (
+      {done && type === 'reveal' && (
+        <div className="rounded-xl p-3 text-sm font-semibold bg-white/10 text-white">
+          {candidates.find((p) => p.id === result.targetId) ? labelForPlayer(candidates.find((p) => p.id === result.targetId)) : 'Ten gracz'}
+          : {roleLabelPl(result.role)}
+          <p className="text-xs font-normal text-white/50 mt-1">Zapisaliśmy to w menu → Karty mocy.</p>
+        </div>
+      )}
+      {done && type !== 'check' && type !== 'reveal' && (
         <p className="rounded-xl p-3 text-sm bg-emerald-900/30 text-safe">Karta aktywowana.</p>
       )}
       {error && <p className="rounded-lg px-3 py-2 text-sm bg-flame-500/30 text-paper-100">⚠ {error}</p>}

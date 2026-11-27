@@ -300,7 +300,7 @@ export function registerGameHandlers(io, socket, pb) {
     try {
       const state = rooms.get(socket.roomId);
       if (!state) return callback?.({ ok: false, error: 'no_room' });
-      const result = await declareCard(io, state, pb, socket.userId, data?.type);
+      const result = await declareCard(io, state, pb, socket.userId, data?.type, data?.cardId ?? null);
       callback?.(result);
     } catch (err) {
       console.error('[game] card_declare error:', err.message);
@@ -536,7 +536,7 @@ export function registerGameHandlers(io, socket, pb) {
           const aliveIds = allPlayers.filter((p) => !p.eliminated && !p.isMaster).map((p) => p.id);
           const roleOf = (id) => state.roles?.[id];
           const candidates =
-            cardPrompt.type === 'check'
+            cardPrompt.type === 'check' || cardPrompt.type === 'reveal'
               ? aliveIds.filter((id) => id !== socket.userId)
               : cardPrompt.type === 'alibi'
               ? aliveIds.filter((id) => roleOf(id) === 'mafia')

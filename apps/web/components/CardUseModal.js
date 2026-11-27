@@ -17,7 +17,7 @@ const ERRORS = {
 
 function errorText(res) {
   if (res?.error === 'too_early') {
-    return `Ta karta będzie dostępna najwcześniej w nocy rundy ${res.availableFromRound}.`;
+    return `Ta karta będzie dostępna dopiero od głosowania w rundzie ${res.availableFromRound}.`;
   }
   return ERRORS[res?.error] || `Nie udało się: ${res?.error || 'nieznany błąd'}`;
 }
@@ -32,16 +32,16 @@ export default function CardUseModal({ open, onClose, cards, round, onDeclare })
   const [message, setMessage] = useState(null);
 
   async function handleUse(card) {
-    setBusy(card.type);
+    setBusy(card.id);
     setMessage(null);
     try {
-      const res = await onDeclare(card.type);
+      const res = await onDeclare(card);
       if (res?.ok) {
         setMessage({
           ok: true,
           text: res.queued
             ? 'Zgłoszono. W nocy master Cię obudzi — zrób to dyskretnie, bez słowa.'
-            : 'Karta użyta. Wynik zobaczycie po zakończeniu głosowania.',
+            : 'Tarcza użyta. Po zakończeniu głosowania dowiesz się, czy zadziałała.',
         });
       } else {
         setMessage({ ok: false, text: errorText(res) });
@@ -71,15 +71,15 @@ export default function CardUseModal({ open, onClose, cards, round, onDeclare })
       {cards?.map((card) => {
         const info = CARD_INFO[card.type];
         if (!info) return null;
-        const tooEarly = card.nightCard && round + 1 < card.availableFromRound;
+        const tooEarly = card.nightCard && round < card.availableFromRound;
         const disabled = card.used || card.queued || tooEarly || busy !== null;
         let status = null;
         if (card.used) status = 'Wykorzystana';
         else if (card.queued) status = 'Zgłoszona — czeka na noc';
-        else if (tooEarly) status = `Dostępna od nocy rundy ${card.availableFromRound}`;
+        else if (tooEarly) status = `Dostępna od głosowania w rundzie ${card.availableFromRound}`;
 
         return (
-          <div key={card.type} className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
+          <div key={card.id || card.type} className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-xl" aria-hidden>
                 {info.icon}
@@ -99,7 +99,7 @@ export default function CardUseModal({ open, onClose, cards, round, onDeclare })
               disabled={disabled}
               onClick={() => handleUse(card)}
             >
-              {busy === card.type ? 'Zgłaszam…' : 'Użyj karty'}
+              {busy === card.id ? 'Zgłaszam…' : 'Użyj karty'}
             </button>
           </div>
         );

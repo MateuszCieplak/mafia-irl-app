@@ -180,6 +180,37 @@ export async function retractMafiaVote(io, state, pb, actorId) {
 }
 
 /**
+ * Czy detektyw już wcześniej sprawdzał ten cel w tej grze?
+ * Najpierw pamięć (dziennik obejmuje też boty), potem PB (przetrwa restart serwera).
+ */
+async function detectiveAlreadyChecked(pb, state, actorId, targetId) {
+  const log = state.detectiveLog?.get(actorId) ?? [];
+  if (log.some((h) => h.targetId === targetId)) return true;
+  if (isPlayerBot(state, actorId) || isPlayerBot(state, targetId)) return false;
+  try {
+    const rounds = await pb.collection('rounds').getFullList({
+      filter: `room_id = "${state.id}"`,
+      requestKey: null,
+    });
+    const roundIds = new Set((rounds || []).map((r) => r.id));
+    if (roundIds.size === 0) return false;
+    const past = await pb.collection('night_actions').getFullList({
+      filter: `actor_id = "${actorId}"`,
+      requestKey: null,
+    });
+    return (past || []).some(
+      (a) =>
+        a.action_type === 'investigate' &&
+        a.target_id === targetId &&
+        roundIds.has(a.round_id),
+    );
+  } catch (err) {
+    console.error('[detective] already-checked lookup failed:', err.message);
+    return false;
+  }
+}
+
+/**
  * Wykonuje akcję nocną gracza/bota. Boty:
  * - nie są sprawdzane przez PB (brak rekordów room_players),
  * - nie piszą do kolekcji night_actions (brak FK user_id w PB).
@@ -241,6 +272,11 @@ export async function processNightAction(io, state, pb, actorId, targetId) {
     const targetRole = state.roles[targetId];
     if (targetRole === undefined) return { ok: false, error: 'invalid_target' };
     const isMafia = targetRole === 'mafia';
+
+    // Tej samej osoby nie można sprawdzić ponownie (w żadnej kolejnej nocy).
+    if (await detectiveAlreadyChecked(pb, state, actorId, targetId)) {
+      return { ok: false, error: 'already_checked' };
+    }
 
     // Wpis do PB tylko gdy zarówno aktor, jak i cel są prawdziwymi graczami
     // (boty nie mają rekordu w _pb_users_auth_, więc target_id/actor_id jako FK by się nie zapisało).

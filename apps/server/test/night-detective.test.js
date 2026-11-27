@@ -59,7 +59,7 @@ describe('2. Noc — detektyw', () => {
     await submitNightAction(socketById.p01.socket, 'p05');
     await advanceCycleToNextNightDetective(masterSocket, socketById);
 
-    const rCit = await submitNightAction(socketById.p01.socket, 'p05');
+    const rCit = await submitNightAction(socketById.p01.socket, 'p06');
     expect(rCit.ok).toBe(true);
     expect(rCit.result.is_mafia).toBe(false);
 
@@ -68,6 +68,26 @@ describe('2. Noc — detektyw', () => {
     const rDoc = await submitNightAction(socketById.p01.socket, 'p02');
     expect(rDoc.ok).toBe(true);
     expect(rDoc.result.is_mafia).toBe(false);
+
+    await teardown(masterSocket, sockets);
+    clearAssignRolesForTest();
+  });
+
+  it('2.1d Tej samej osoby nie można sprawdzić drugi raz (kolejna noc)', async () => {
+    const { masterSocket, sockets, socketById } = await setupLobbyStartedWithPhaseDetective(ctx.url);
+
+    const first = await submitNightAction(socketById.p01.socket, 'p05');
+    expect(first.ok).toBe(true);
+
+    await advanceCycleToNextNightDetective(masterSocket, socketById);
+
+    const again = await submitNightAction(socketById.p01.socket, 'p05');
+    expect(again.ok).toBe(false);
+    expect(again.error).toBe('already_checked');
+
+    // Odrzucone sprawdzenie nie zużywa tury — można wskazać kogoś innego.
+    const other = await submitNightAction(socketById.p01.socket, 'p06');
+    expect(other.ok).toBe(true);
 
     await teardown(masterSocket, sockets);
     clearAssignRolesForTest();

@@ -109,21 +109,21 @@ Włączany w ustawieniach pokoju. Przy starcie gry losowane są **jednorazowe ka
 
 | Karta | Dla kogo | Efekt |
 |---|---|---|
-| 🔎 **Sprawdzenie** | obywatel | W nocy wskazuje 3 graczy i dowiaduje się, ilu z nich to mafia. |
-| 🛡️ **Tarcza** | obywatel | Unieważnia wyrzucenie z głosowania (chroni *każdego* wybranego — także mafię). |
-| 🛡️ **Tarcza mafii** | mafia (wspólna) | Jak wyżej, jednorazowa dla całej drużyny. |
-| 🕵️ **Alibi** | mafia | Wybrany mafioso przy najbliższym Sprawdzeniu liczy się jako „czysty”. |
-| 📡 **Zakłócenie** | mafia | Najbliższe Sprawdzenie pokaże błędny wynik. |
-| 🎭 **Fałszywy trop** | mafia | Wybrany niewinny gracz przy najbliższym Sprawdzeniu liczy się jako mafia. |
+| 🔎 **Sprawdzenie** | obywatel (1 gracz) | W nocy wskazuje 3 graczy i dowiaduje się, ilu z nich to mafia. |
+| 👁️ **Odkrycie** | obywatel (1 gracz) | W nocy wskazuje żywego gracza i poznaje jego rolę. |
+| 🛡️ **Tarcza** | obywatel (1 gracz) | Ratuje wyrzuconego z głosowania **obywatela** (na mafię nie działa); użytkownik dowiaduje się, kogo wskazano. |
+| 🛡️ **Tarcza mafii** | mafia (wspólna) | Ratuje wyrzuconego z głosowania **mafiosa**; jednorazowa dla całej drużyny. |
+| 🕵️ **Alibi** | mafia (1 gracz) | Wybrany mafioso przy najbliższym Sprawdzeniu liczy się jako „czysty”. |
+| 🎭 **Fałszywy trop** | mafia (1 gracz) | Wybrany niewinny gracz przy najbliższym Sprawdzeniu liczy się jako mafia. |
+| 📡 **Zakłócenie** | mafia (wspólna) | Najbliższe Sprawdzenie pokaże błędny wynik (cała trójka). |
 
 Jak to działa w praktyce:
 - Kartę zgłasza się przyciskiem **„Użyj karty”** w fazie głosowania. Tarcza działa od razu, w tym głosowaniu.
-- Karty nocne (Sprawdzenie, Alibi, Zakłócenie, Fałszywy trop) trafiają do kolejki i mają własną turę na początku
-  następnej nocy — najpierw mafii, potem obywateli, żeby efekt kart mafii zdążył zadziałać na Sprawdzenie z tej samej nocy.
-- Master wie, że ktoś użył karty, i ogłasza to jawnie (bez mówienia jakiej) — nie trzeba blefować.
-- Karty nocne można zgłosić dopiero od ustawionej rundy (domyślnie od 3.).
-- Każdy typ karty można włączyć/wyłączyć osobno, można ustawić liczbę kart Sprawdzenia i wybrać jedną kartę specjalną mafii
-  (albo żadną).
+- Karty nocne (Sprawdzenie, Odkrycie, Alibi, Zakłócenie, Fałszywy trop) trafiają do kolejki i mają własną turę na
+  początku następnej nocy — najpierw mafii, potem obywateli, żeby efekt kart mafii zdążył zadziałać na Sprawdzenie z tej samej nocy.
+- Karty nocne można zgłosić dopiero od głosowania w ustawionej rundzie (domyślnie 3.); tarcze od początku.
+- Max 2 karty na drużynę — losowane z puli albo ustawione ręcznie przez mastera. Nieużyta karta wyeliminowanego
+  gracza przechodzi na żywego gracza jego drużyny.
 
 ---
 

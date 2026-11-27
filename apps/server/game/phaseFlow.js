@@ -13,6 +13,8 @@ import {
   resetNightCards,
   clearShields,
   emitCardQueue,
+  settleShields,
+  transferCards,
 } from './cards.js';
 
 export const PHASES = BASE_PHASES;
@@ -182,7 +184,7 @@ async function emitNightActionPrompts(io, state, pb) {
   }
 
   if (state.phase === 'night_citizen_card') {
-    const actorId = state.cardQueue?.check?.[state.nightTurn ?? 0] ?? null;
+    const actorId = state.cardQueue?.check?.[state.nightTurn ?? 0]?.userId ?? null;
     if (actorId && !(await isEliminated(pb, state.id, actorId, state))) {
       const p = state.players.get(actorId);
       if (p?.socketId && !p.isBot) {
@@ -191,11 +193,11 @@ async function emitNightActionPrompts(io, state, pb) {
     }
   }
 
-  if (state.phase === 'night_mafia_card' && state.cardQueue?.mafia) {
-    for (const [uid, r] of Object.entries(state.roles || {})) {
-      if (r !== 'mafia') continue;
-      if (await isEliminated(pb, state.id, uid, state)) continue;
-      const p = state.players.get(uid);
+  if (state.phase === 'night_mafia_card') {
+    // Kartę mafii aktywuje jej właściciel — każda zgłoszona karta ma własną turę.
+    const actorId = state.cardQueue?.mafia?.[state.nightTurn ?? 0]?.by ?? null;
+    if (actorId && !(await isEliminated(pb, state.id, actorId, state))) {
+      const p = state.players.get(actorId);
       if (p?.socketId && !p.isBot) {
         io.to(p.socketId).emit('night_action_prompt', { phase: state.phase, role: 'mafia_card', ...meta });
       }
@@ -248,7 +250,7 @@ export async function advancePhaseInternal(io, state, pb, callback) {
   const turnRole = TURN_PHASE_ROLE[state.phase];
   const nextTurn = (state.nightTurn ?? 0) + 1;
   const sameTurnAdvance =
-    (Boolean(turnRole) || state.phase === 'night_citizen_card') &&
+    (Boolean(turnRole) || CARD_PHASES.includes(state.phase)) &&
     nextTurn < turnCount(state, state.phase);
   if (sameTurnAdvance) {
     nextIdx = currentIdx;
@@ -303,6 +305,8 @@ export async function advancePhaseInternal(io, state, pb, callback) {
   // fazie, dopóki master ręcznie nie przejdzie dalej (przycisk w MasterControls).
   if (nextPhase === 'night_resolve') {
     const result = await resolveNight(state, pb);
+    // Zabity w nocy posiadacz nieużytej karty przekazuje ją żywemu graczowi swojej drużyny.
+    if (result.eliminatedId) await transferCards(io, state, pb, result.eliminatedId);
     const protections = state.nightActions.protections || {};
     const protectedIds = Object.values(protections);
     state.previousDoctorTargets = { ...protections };
@@ -365,7 +369,13 @@ export async function advancePhaseInternal(io, state, pb, callback) {
       outcome: result.outcome === 'shielded' ? 'no_elimination' : result.outcome,
     };
     // Tarcze działają tylko w głosowaniu, w którym je zgłoszono (zużyte także bez efektu).
+    // Każdy, kto użył tarczy, prywatnie dowiaduje się, czy zadziałała i kim był wskazany gracz.
+    const shieldReports = settleShields(io, state, {
+      targetId: result.shieldedId ?? result.voteTargetId ?? null,
+      saved: result.outcome === 'shielded',
+    });
     clearShields(state);
+    if (result.eliminatedId) await transferCards(io, state, pb, result.eliminatedId);
 
     const pubMeta = phaseMeta(state);
     io.to(`room:${state.code}`).emit('vote_resolved', {
@@ -381,6 +391,7 @@ export async function advancePhaseInternal(io, state, pb, callback) {
       eliminatedId: result.eliminatedId,
       eliminatedName,
       outcome: result.outcome,
+      ...(shieldReports.length ? { shieldReports } : {}),
       ...(result.outcome === 'shielded'
         ? {
             shieldedId: result.shieldedId,

@@ -1,6 +1,12 @@
 'use client';
 
-import { CARD_INFO, checkEntrySentence, mafiaCardEntrySentence } from '@/lib/cards';
+import {
+  CARD_INFO,
+  checkEntrySentence,
+  mafiaCardEntrySentence,
+  revealEntrySentence,
+  shieldEntrySentence,
+} from '@/lib/cards';
 
 /**
  * Widok „Karty mocy” w menu gry: moje karty, ich stan i dziennik wyników
@@ -9,6 +15,8 @@ import { CARD_INFO, checkEntrySentence, mafiaCardEntrySentence } from '@/lib/car
 export default function CardsPanel({ cards = [], cardLog = [], mafiaCard = null, players = [], round = 0 }) {
   const nameOf = (id) => players.find((p) => p.id === id)?.username || '—';
   const log = cardLog.filter((e) => e.kind === 'check');
+  const shieldLog = cardLog.filter((e) => e.kind === 'shield');
+  const revealLog = cardLog.filter((e) => e.kind === 'reveal');
   const mafiaLog = mafiaCard?.log || [];
   const wards = mafiaCard?.wards;
 
@@ -25,11 +33,11 @@ export default function CardsPanel({ cards = [], cardLog = [], mafiaCard = null,
           let status = 'Gotowa do użycia (przycisk „Użyj karty” w głosowaniu)';
           if (card.used) status = 'Wykorzystana';
           else if (card.queued) status = 'Zgłoszona — czeka na noc';
-          else if (card.nightCard && round + 1 < card.availableFromRound) {
-            status = `Dostępna od nocy rundy ${card.availableFromRound}`;
+          else if (card.nightCard && round < card.availableFromRound) {
+            status = `Dostępna od głosowania w rundzie ${card.availableFromRound}`;
           }
           return (
-            <li key={card.type} className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
+            <li key={card.id || card.type} className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1">
               <div className="flex items-center gap-2">
                 <span className="text-xl" aria-hidden>
                   {info.icon}
@@ -51,6 +59,32 @@ export default function CardsPanel({ cards = [], cardLog = [], mafiaCard = null,
             {log.map((entry, i) => (
               <li key={i} className="rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm">
                 {checkEntrySentence(entry, nameOf)}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {revealLog.length > 0 && (
+        <section className="space-y-1.5">
+          <h4 className="text-[12px] uppercase tracking-wider text-white/40">Wyniki Odkrycia</h4>
+          <ul className="space-y-1.5">
+            {revealLog.map((entry, i) => (
+              <li key={i} className="rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm">
+                {revealEntrySentence(entry, nameOf)}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {shieldLog.length > 0 && (
+        <section className="space-y-1.5">
+          <h4 className="text-[12px] uppercase tracking-wider text-white/40">Wyniki Tarczy</h4>
+          <ul className="space-y-1.5">
+            {shieldLog.map((entry, i) => (
+              <li key={i} className="rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm">
+                {shieldEntrySentence(entry, nameOf)}
               </li>
             ))}
           </ul>

@@ -18,9 +18,13 @@ export function roleActorIds(state, role) {
 
 /** Liczba tur w fazie — co najmniej 1 (master przeklikuje fazę nawet bez aktora). */
 export function turnCount(state, phase) {
-  // Tura karty obywatela: jedna tura na każdego, kto zgłosił Sprawdzenie.
+  // Tura karty obywatela: jedna tura na każde zgłoszone Sprawdzenie.
   if (phase === 'night_citizen_card') {
     return Math.max(1, state.cardQueue?.check?.length || 0);
+  }
+  // Tura karty mafii: jedna tura na każdą zgłoszoną kartę (aktorem jest jej właściciel).
+  if (phase === 'night_mafia_card') {
+    return Math.max(1, state.cardQueue?.mafia?.length || 0);
   }
   const role = TURN_PHASE_ROLE[phase];
   if (!role) return 1;

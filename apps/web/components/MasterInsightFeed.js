@@ -14,7 +14,9 @@ const KIND_LABELS = {
   cards_assigned: 'Karty mocy',
   card_declared: 'Karta',
   card_check: 'Sprawdzenie',
+  card_reveal: 'Odkrycie',
   card_mafia: 'Karta mafii',
+  card_transferred: 'Przejęcie karty',
 };
 
 const KIND_COLORS = {
@@ -28,11 +30,14 @@ const KIND_COLORS = {
   cards_assigned: 'text-fuchsia-300',
   card_declared: 'text-fuchsia-300',
   card_check: 'text-sky-300',
+  card_reveal: 'text-sky-300',
   card_mafia: 'text-blood',
+  card_transferred: 'text-fuchsia-300',
 };
 
 const CARD_NAMES = {
   check: 'Sprawdzenie',
+  reveal: 'Odkrycie',
   shield: 'Tarcza',
   mafia_shield: 'Tarcza mafii',
   alibi: 'Alibi',
@@ -70,7 +75,11 @@ function formatEntry(entry, players) {
     }
     if (entry.eliminatedName || entry.eliminatedId) {
       const name = entry.eliminatedName || playerName(entry.eliminatedId, players);
-      return `Wyrzucony(a): ${name}`;
+      const failed = (entry.shieldReports || []).filter((r) => !r.saved);
+      const note = failed.length
+        ? ` (tarcza ${failed[0].team === 'mafia' ? 'mafii' : 'obywateli'} nie zadziałała — zły cel)`
+        : '';
+      return `Wyrzucony(a): ${name}${note}`;
     }
     return 'Brak rozstrzygnięcia';
   }
@@ -86,10 +95,23 @@ function formatEntry(entry, players) {
     const holders = (entry.overview?.holders || []).map(
       (h) => `${playerName(h.userId, players)}: ${CARD_NAMES[h.type] || h.type}`,
     );
-    const mafia = (entry.overview?.mafia || []).map((c) => CARD_NAMES[c.type] || c.type);
+    const teamCards = entry.overview?.team || [];
+    const town = teamCards.filter((c) => c.team === 'town').map((c) => CARD_NAMES[c.type] || c.type);
+    const mafia = teamCards.filter((c) => c.team === 'mafia').map((c) => CARD_NAMES[c.type] || c.type);
     const parts = [...holders];
-    if (mafia.length) parts.push(`Mafia: ${mafia.join(', ')}`);
+    if (town.length) parts.push(`Obywatele (wspólne): ${town.join(', ')}`);
+    if (mafia.length) parts.push(`Mafia (wspólne): ${mafia.join(', ')}`);
     return parts.join(' · ') || 'Brak kart';
+  }
+
+  if (kind === 'card_transferred') {
+    return (entry.moved || [])
+      .map((m) =>
+        m.to
+          ? `Karta „${CARD_NAMES[m.type] || m.type}” przeszła: ${playerName(m.from, players)} → ${playerName(m.to, players)}`
+          : `Karta „${CARD_NAMES[m.type] || m.type}” (${playerName(m.from, players)}) przepadła — brak żywego gracza drużyny`,
+      )
+      .join(' · ');
   }
 
   if (kind === 'card_declared') {
@@ -108,6 +130,10 @@ function formatEntry(entry, players) {
     return `${playerName(entry.actorId, players)} sprawdził ${names} → pokazano ${entry.shownCount} (prawda: ${entry.trueCount})${
       extras.length ? ` [${extras.join('; ')}]` : ''
     }`;
+  }
+
+  if (kind === 'card_reveal') {
+    return `${playerName(entry.actorId, players)} odkrył(a) ${playerName(entry.targetId, players)} → ${entry.role}`;
   }
 
   if (kind === 'card_mafia') {

@@ -1,7 +1,125 @@
 'use client';
 
 import { useState } from 'react';
-import { MAFIA_SPECIAL_OPTIONS, CARD_INFO } from '@/lib/cards';
+import {
+  CARD_INFO,
+  CITIZEN_CARD_TYPES,
+  MAFIA_CARD_TYPES,
+  MAX_CARDS_PER_TEAM,
+  cardScopeLabel,
+  isSharedCardType,
+} from '@/lib/cards';
+
+const CARD_TEAMS = {
+  town: {
+    label: 'Obywatele',
+    types: CITIZEN_CARD_TYPES,
+    countKey: 'card_citizen_count',
+    poolKey: 'card_citizen_pool',
+    manualKey: 'card_citizen_manual',
+  },
+  mafia: {
+    label: 'Mafia',
+    types: MAFIA_CARD_TYPES,
+    countKey: 'card_mafia_count',
+    poolKey: 'card_mafia_pool',
+    manualKey: 'card_mafia_manual',
+  },
+};
+
+/** Ustawienia kart jednej drużyny: losowanie z puli (liczba + dozwolone karty) albo ręczne sloty. */
+function CardTeamSettings({ team, local, onChange }) {
+  const cfg = CARD_TEAMS[team];
+  const manual = local.card_assignment === 'manual';
+  const pool = local[cfg.poolKey] ?? cfg.types;
+  const slots = local[cfg.manualKey] ?? [];
+
+  function togglePool(type, on) {
+    const next = on ? [...new Set([...pool, type])] : pool.filter((t) => t !== type);
+    onChange(cfg.poolKey, cfg.types.filter((t) => next.includes(t)));
+  }
+
+  function setSlot(index, type) {
+    const next = Array.from({ length: MAX_CARDS_PER_TEAM }, (_, i) => slots[i] || '');
+    next[index] = type;
+    onChange(cfg.manualKey, next.filter(Boolean));
+  }
+
+  return (
+    <div className="space-y-3">
+      {manual ? (
+        <div className="space-y-2">
+          <p className="text-[12px] text-white/40 uppercase">Karty rozdane w grze (max {MAX_CARDS_PER_TEAM})</p>
+          {Array.from({ length: MAX_CARDS_PER_TEAM }, (_, i) => (
+            <label key={i} className="space-y-1 block">
+              <span className="text-[12px] text-white/40">Slot {i + 1}</span>
+              <select
+                className="input text-sm py-2 min-h-0"
+                value={slots[i] || ''}
+                onChange={(e) => setSlot(i, e.target.value)}
+              >
+                <option value="">— brak karty —</option>
+                {cfg.types.map((t) => (
+                  <option key={t} value={t}>
+                    {CARD_INFO[t].icon} {CARD_INFO[t].name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <>
+          <label className="space-y-1 block">
+            <span className="text-[12px] text-white/40 uppercase">
+              Ile kart losować (0–{MAX_CARDS_PER_TEAM})
+            </span>
+            <input
+              type="number"
+              min={0}
+              max={MAX_CARDS_PER_TEAM}
+              step={1}
+              className="input text-sm py-2 min-h-0"
+              value={local[cfg.countKey] ?? ''}
+              onChange={(e) => onChange(cfg.countKey, e.target.value === '' ? '' : Number(e.target.value))}
+            />
+          </label>
+          <div className="space-y-1.5">
+            <p className="text-[12px] text-white/40 uppercase">Pula kart do losowania</p>
+            {cfg.types.map((t) => (
+              <label key={t} className="setting-row">
+                <input
+                  type="checkbox"
+                  checked={pool.includes(t)}
+                  onChange={(e) => togglePool(t, e.target.checked)}
+                />
+                <span>
+                  {CARD_INFO[t].icon} {CARD_INFO[t].name}
+                  <span className="block text-[11px] text-white/35">{cardScopeLabel(t)}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-white/40 leading-relaxed">
+            Losowane są różne karty z puli — jeśli pula ma mniej kart niż wybrana liczba, w grze będzie ich mniej.
+          </p>
+        </>
+      )}
+
+      <ul className="space-y-1.5">
+        {cfg.types.map((t) => (
+          <li key={t} className="text-xs text-white/45 leading-relaxed">
+            <span className="text-white/70 font-semibold">
+              {CARD_INFO[t].icon} {CARD_INFO[t].name}
+              {isSharedCardType(t) ? ' (występuje w obu drużynach)' : ''}:
+            </span>{' '}
+            {CARD_INFO[t].how}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 const TIMER_FIELDS = [
   { key: 'phase_timer_detective_sec', label: 'Detektyw (s)' },
@@ -27,6 +145,7 @@ const SUB_TABS = [
  */
 export default function RoomSettingsPanel({ value, onChange, playerCount = 0, dangerZone = null }) {
   const [sub, setSub] = useState('roles');
+  const [cardTeam, setCardTeam] = useState('town');
   const local = value || defaultSettings();
 
   function handleChange(key, v) {
@@ -203,81 +322,45 @@ export default function RoomSettingsPanel({ value, onChange, playerCount = 0, da
             </label>
             <p className="text-xs text-white/40 leading-relaxed px-1 -mt-1">
               Część graczy dostaje na starcie tajną, jednorazową kartę. Kartę zgłasza się przyciskiem „Użyj karty”
-              w fazie głosowania. Karty nocne (Sprawdzenie, karty mafii) działają w osobnych turach, w których master
-              „budzi” gracza — jawnie, na oczach grupy, a master zawsze ogłasza, że użyto karty (nie mówiąc jakiej).
+              w fazie głosowania. Karty nocne (Sprawdzenie, Odkrycie, karty mafii) działają w osobnych turach, w
+              których master „budzi” gracza.
             </p>
 
             {local.advanced_mode === true && (
-              <div className="panel space-y-3">
-                <label className="setting-row">
-                  <input
-                    type="checkbox"
-                    checked={local.card_check_enabled !== false}
-                    onChange={(e) => handleChange('card_check_enabled', e.target.checked)}
-                  />
-                  Obywatele: {CARD_INFO.check.name}
-                </label>
-                {local.card_check_enabled !== false && (
-                  <label className="space-y-1 block">
-                    <span className="text-[12px] text-white/40 uppercase">Ile kart Sprawdzenia w grze</span>
-                    <input
-                      type="number"
-                      min={1}
-                      step={1}
-                      className="input text-sm py-2 min-h-0"
-                      value={local.check_card_count ?? ''}
-                      onChange={(e) => handleChange('check_card_count', e.target.value === '' ? '' : Number(e.target.value))}
-                    />
-                  </label>
-                )}
-                <p className="text-xs text-white/40 leading-relaxed">{CARD_INFO.check.how}</p>
-
-                <label className="setting-row">
-                  <input
-                    type="checkbox"
-                    checked={local.card_shield_citizen_enabled !== false}
-                    onChange={(e) => handleChange('card_shield_citizen_enabled', e.target.checked)}
-                  />
-                  Obywatele: {CARD_INFO.shield.name} (1 karta)
-                </label>
-                <label className="setting-row">
-                  <input
-                    type="checkbox"
-                    checked={local.card_shield_mafia_enabled !== false}
-                    onChange={(e) => handleChange('card_shield_mafia_enabled', e.target.checked)}
-                  />
-                  Mafia: {CARD_INFO.mafia_shield.name} (1 karta dla drużyny)
-                </label>
-                <p className="text-xs text-white/40 leading-relaxed">
-                  Tarcza unieważnia wyrzucenie z głosowania — kogokolwiek wybrano. Gracze widzą tylko „Podczas głosowania
-                  nikt nie odpadł”, bez żadnej wzmianki o karcie. Zgłoszona tarcza przy remisie lub pominiętym głosowaniu
-                  przepada po cichu.
-                </p>
-
-                <label className="space-y-1 block">
-                  <span className="text-[12px] text-white/40 uppercase">Mafia: karta specjalna</span>
-                  <select
-                    className="input text-sm py-2 min-h-0"
-                    value={local.card_mafia_special ?? 'alibi'}
-                    onChange={(e) => handleChange('card_mafia_special', e.target.value)}
-                  >
-                    {MAFIA_SPECIAL_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
+              <div className="panel space-y-4">
+                <div className="space-y-2">
+                  <p className="text-[12px] text-white/40 uppercase">Rozdawanie kart</p>
+                  <div className="flex gap-1.5" role="radiogroup" aria-label="Sposób rozdawania kart">
+                    {[
+                      { id: 'random', label: 'Losowo' },
+                      { id: 'manual', label: 'Ręcznie (master)' },
+                    ].map((o) => (
+                      <button
+                        key={o.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={(local.card_assignment ?? 'random') === o.id}
+                        onClick={() => handleChange('card_assignment', o.id)}
+                        className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold border transition-colors ${
+                          (local.card_assignment ?? 'random') === o.id
+                            ? 'bg-brass-500/20 text-brass-400 border-brass-500/60'
+                            : 'bg-white/5 text-paper-200/60 border-white/10 hover:border-brass-500/40'
+                        }`}
+                      >
                         {o.label}
-                      </option>
+                      </button>
                     ))}
-                  </select>
-                </label>
-                {['alibi', 'false_lead', 'jam'].includes(local.card_mafia_special ?? 'alibi') && (
+                  </div>
                   <p className="text-xs text-white/40 leading-relaxed">
-                    {CARD_INFO[local.card_mafia_special ?? 'alibi'].how} Efekt jest jednorazowy i czeka na najbliższe
-                    Sprawdzenie; jeśli mafia zgłosi kartę w tym samym głosowaniu co obywatel, zadziała już w tej samej
-                    nocy (tura mafii idzie pierwsza).
+                    Maksymalnie {MAX_CARDS_PER_TEAM} karty na drużynę. Losowo: serwer dobiera karty z puli przy starcie
+                    gry. Ręcznie: wskazujesz dokładnie, jakie karty trafią do obywateli i do mafii.
                   </p>
-                )}
+                </div>
 
                 <label className="space-y-1 block">
-                  <span className="text-[12px] text-white/40 uppercase">Karty nocne działają od nocy rundy</span>
+                  <span className="text-[12px] text-white/40 uppercase">
+                    Karty nocne można zgłosić od głosowania w rundzie
+                  </span>
                   <input
                     type="number"
                     min={1}
@@ -288,8 +371,45 @@ export default function RoomSettingsPanel({ value, onChange, playerCount = 0, da
                   />
                 </label>
                 <p className="text-xs text-white/40 leading-relaxed">
-                  Tury kart pojawiają się w nocy tylko wtedy, gdy ktoś zgłosił użycie karty. Master ogłasza wtedy na głos
-                  „użyto karty mocy” (bez podawania jakiej), więc nie trzeba blefować w pozostałych nocach.
+                  Dotyczy Sprawdzenia, Alibi, Fałszywego tropu i Zakłócenia. Kartę zgłasza się w głosowaniu rundy
+                  {' '}{local.card_min_round || 3} lub późniejszej, a jej tura nocna jest w nocy kolejnej rundy (domyślnie:
+                  zgłoszenie w rundzie 3, efekt w nocy 4). Tarcze działają od początku gry.
+                </p>
+
+                <div className="space-y-3">
+                  <div
+                    role="tablist"
+                    aria-label="Drużyna"
+                    className="flex gap-1.5"
+                  >
+                    {Object.entries(CARD_TEAMS).map(([id, t]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        role="tab"
+                        aria-selected={cardTeam === id}
+                        onClick={() => setCardTeam(id)}
+                        className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold uppercase tracking-wider border transition-colors ${
+                          cardTeam === id
+                            ? id === 'mafia'
+                              ? 'bg-blood/25 text-paper-100 border-blood/60'
+                              : 'bg-brass-500/20 text-brass-400 border-brass-500/60'
+                            : 'bg-white/5 text-paper-200/60 border-white/10 hover:border-brass-500/40'
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                  <CardTeamSettings team={cardTeam} local={local} onChange={handleChange} />
+                </div>
+
+                <p className="text-xs text-white/40 leading-relaxed">
+                  Tarcza ma wersję dla obu drużyn, ale chroni tylko swoich: tarcza obywateli (ma ją jeden obywatel)
+                  ratuje wyrzuconego obywatela, tarcza mafii (wspólna dla mafii) — wyrzuconego mafiosa. Gracze widzą tylko „Podczas głosowania nikt nie
+                  odpadł”; użytkownik tarczy dowiaduje się prywatnie, czy zadziałała. Alibi, Fałszywy trop i Zakłócenie
+                  działają tylko na kartę Sprawdzenia, nie na detektywa. Nieużyta karta wyeliminowanego gracza
+                  przechodzi na żywego gracza jego drużyny.
                 </p>
               </div>
             )}
@@ -318,12 +438,14 @@ export function defaultSettings() {
     detective_count: 1,
     doctor_count: 1,
     advanced_mode: false,
-    card_check_enabled: true,
-    check_card_count: 1,
-    card_shield_citizen_enabled: true,
-    card_shield_mafia_enabled: true,
-    card_mafia_special: 'alibi',
     card_min_round: 3,
+    card_assignment: 'random',
+    card_citizen_count: 2,
+    card_citizen_pool: [...CITIZEN_CARD_TYPES],
+    card_citizen_manual: ['check', 'shield'],
+    card_mafia_count: 2,
+    card_mafia_pool: [...MAFIA_CARD_TYPES],
+    card_mafia_manual: ['mafia_shield', 'alibi'],
   };
 }
 
@@ -347,9 +469,30 @@ export function sanitizeSettings(settings, playerCount = 0) {
     const n = Math.floor(Number(next.mafia_count));
     next.mafia_count = Math.min(Math.max(1, Number.isFinite(n) ? n : 1), maxMafia);
   }
-  for (const key of ['detective_count', 'doctor_count', 'check_card_count', 'card_min_round']) {
+  for (const key of ['detective_count', 'doctor_count', 'card_min_round']) {
     const n = Math.floor(Number(next[key]));
-    next[key] = Number.isFinite(n) && n >= 1 ? n : 1;
+    next[key] = Number.isFinite(n) && n >= 1 ? n : key === 'card_min_round' ? 3 : 1;
+  }
+  for (const key of ['card_citizen_count', 'card_mafia_count']) {
+    const n = Math.floor(Number(next[key]));
+    next[key] = Number.isFinite(n) ? Math.min(MAX_CARDS_PER_TEAM, Math.max(0, n)) : MAX_CARDS_PER_TEAM;
+  }
+  next.card_assignment = next.card_assignment === 'manual' ? 'manual' : 'random';
+  const keepTypes = (list, allowed, max) =>
+    (Array.isArray(list) ? list : []).filter((t) => allowed.includes(t)).slice(0, max);
+  next.card_citizen_pool = keepTypes(next.card_citizen_pool, CITIZEN_CARD_TYPES, CITIZEN_CARD_TYPES.length);
+  next.card_mafia_pool = keepTypes(next.card_mafia_pool, MAFIA_CARD_TYPES, MAFIA_CARD_TYPES.length);
+  next.card_citizen_manual = keepTypes(next.card_citizen_manual, CITIZEN_CARD_TYPES, MAX_CARDS_PER_TEAM);
+  next.card_mafia_manual = keepTypes(next.card_mafia_manual, MAFIA_CARD_TYPES, MAX_CARDS_PER_TEAM);
+  // Porzucone klucze sprzed podziału na drużyny.
+  for (const k of [
+    'card_check_enabled',
+    'card_shield_citizen_enabled',
+    'card_shield_mafia_enabled',
+    'card_mafia_special',
+    'check_card_count',
+  ]) {
+    delete next[k];
   }
   return next;
 }
@@ -360,7 +503,9 @@ export function settingsDiffer(a, b) {
   const y = mergeSettings(b);
   const keys = new Set([...Object.keys(x), ...Object.keys(y)]);
   for (const k of keys) {
-    if (x[k] !== y[k]) return true;
+    // Listy (pule kart) porównujemy po zawartości, nie po referencji.
+    const same = Array.isArray(x[k]) || Array.isArray(y[k]) ? JSON.stringify(x[k]) === JSON.stringify(y[k]) : x[k] === y[k];
+    if (!same) return true;
   }
   return false;
 }

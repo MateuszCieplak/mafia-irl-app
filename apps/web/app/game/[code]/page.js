@@ -400,6 +400,18 @@ export default function GamePage() {
         setCardQueue(data);
         loadState();
       }),
+      // Gracz przejął nieużytą kartę wyeliminowanego współgracza z drużyny.
+      on('cards_updated', (data) => {
+        setCards(data.cards ?? []);
+        if (data.received?.length) {
+          const names = data.received.map((c) => CARD_INFO[c.type]?.name || c.type).join(', ');
+          setActionError(`Przejęto kartę mocy wyeliminowanego gracza: ${names}.`);
+        }
+      }),
+      // Prywatny wynik użytej Tarczy (czy uratowała i kim był wskazany gracz).
+      on('card_shield_result', (entry) => {
+        setCardLog((prev) => [...prev, entry]);
+      }),
       on('night_action_submitted', (data) => {
         setSubmissions((prev) => ({ ...prev, [data.role]: data }));
       }),
@@ -529,6 +541,7 @@ export default function GamePage() {
   const ACTION_ERRORS = {
     wrong_phase: 'Zła faza gry — spróbuj ponownie.',
     already_acted: 'Już wykonałeś(aś) akcję w tej turze.',
+    already_checked: 'Ten gracz został już przez Ciebie sprawdzony.',
     eliminated: 'Jesteś wyeliminowany(a).',
     invalid_target: 'Nieprawidłowy cel.',
     target_eliminated: 'Ten gracz jest już wyeliminowany.',
@@ -618,8 +631,8 @@ export default function GamePage() {
     }
   }
 
-  async function handleDeclareCard(type) {
-    const res = await emit('card_declare', { type });
+  async function handleDeclareCard(card) {
+    const res = await emit('card_declare', { type: card.type, cardId: card.id });
     if (res?.ok) loadState();
     return res;
   }
@@ -629,7 +642,12 @@ export default function GamePage() {
     const res = await emit('card_night_action', payload);
     if (res?.ok) {
       setCardNightResult(res.result ?? { done: true });
-      if (res.result) {
+      if (res.result?.kind === 'reveal') {
+        setCardLog((prev) => [
+          ...prev,
+          { kind: 'reveal', round, targetId: res.result.targetId, role: res.result.role },
+        ]);
+      } else if (res.result) {
         setCardLog((prev) => [
           ...prev,
           { kind: 'check', round, targetIds: res.result.targetIds, count: res.result.count },
@@ -1062,7 +1080,7 @@ export default function GamePage() {
               <div className="w-full max-w-sm card py-3 px-3 text-sm space-y-1 text-center">
                 <p className="section-eyebrow">Karta mocy</p>
                 {cards.map((c) => (
-                  <p key={c.type} className="text-white/85">
+                  <p key={c.id || c.type} className="text-white/85">
                     <span aria-hidden>{CARD_INFO[c.type]?.icon}</span> Otrzymałeś(aś) kartę „
                     {CARD_INFO[c.type]?.name || c.type}”
                     <span className="block text-xs text-white/45">{CARD_INFO[c.type]?.how}</span>
@@ -1214,7 +1232,13 @@ export default function GamePage() {
             {isNightPhaseForRole && (
               <NightActionPicker
                 role={role}
-                players={alivePlayers}
+                players={
+                  role === 'detective'
+                    ? alivePlayers.filter(
+                        (p) => !detectiveHistory.some((h) => h.targetId === p.id),
+                      )
+                    : alivePlayers
+                }
                 onSubmit={handleNightAction}
                 disabled={actionSubmitted}
                 result={nightResult}
