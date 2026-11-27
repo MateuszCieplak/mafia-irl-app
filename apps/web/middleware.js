@@ -21,6 +21,9 @@ export async function middleware(request) {
   // Strona hasła i jej API — zawsze dostępne
   if (pathname === PASSWORD_PAGE) return NextResponse.next();
 
+  // Wejście z panelu Sieje: bilet SSO zastępuje hasło, a /api/sso ustawia ciasteczko dostępu.
+  if (pathname === '/sso') return NextResponse.next();
+
   const cookie = request.cookies.get(COOKIE_NAME);
   if (cookie?.value) {
     const expected = await hashPassword(ACCESS_PASSWORD);
