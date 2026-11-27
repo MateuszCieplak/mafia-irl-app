@@ -79,6 +79,9 @@ function submissionDetail(role, data, players) {
   if (role === 'mafia') {
     return `cel: ${playerName(data.targetId, players)}`;
   }
+  if (role === 'citizen_card' && data.cardType === 'reveal') {
+    return `${playerName(data.actorId, players)} odkrył(a) ${playerName(data.targetId, players)} → ${data.role}`;
+  }
   if (role === 'citizen_card') {
     const names = (data.targetIds || []).map((id) => playerName(id, players)).join(', ');
     return `${playerName(data.actorId, players)} sprawdził(a) ${names} → pokazano ${mafiaCountLabel(data.count)}${
@@ -168,10 +171,6 @@ export default function MasterControls({
       {phase === 'night_mafia_card' && (
         <CardAnnounce text="Powiedz na głos: „Budzi się mafia i używa karty mocy”. Nie mów, jakiej karty." />
       )}
-      {phase === 'day_vote' &&
-        (cardQueue?.shields || 0) + (cardQueue?.check?.length || 0) + (cardQueue?.mafia ? 1 : 0) > 0 && (
-          <CardAnnounce text="Ktoś użył karty mocy — ogłoś to grupie na głos („Użyto karty mocy”). Nie mów, jakiej karty ani kto jej użył." />
-        )}
 
       {submissions && Object.keys(submissions).length > 0 && (
         <div className="space-y-1.5">
@@ -258,6 +257,7 @@ function CardAnnounce({ text }) {
 
 const CARD_NAMES_PL = {
   check: 'Sprawdzenie',
+  reveal: 'Odkrycie',
   shield: 'Tarcza',
   mafia_shield: 'Tarcza mafii',
   alibi: 'Alibi',
@@ -266,19 +266,20 @@ const CARD_NAMES_PL = {
 };
 
 function CardsOverview({ overview, players }) {
-  if (!overview || (!overview.holders?.length && !overview.mafia?.length)) return null;
+  const team = overview?.team || [];
+  if (!overview || (!overview.holders?.length && !team.length)) return null;
   return (
     <details className="rounded-lg bg-white/5 px-3 py-2 text-xs text-white/70">
       <summary className="cursor-pointer font-semibold text-white/60">Karty w grze</summary>
       <ul className="mt-1.5 space-y-0.5">
-        {overview.holders.map((h) => (
-          <li key={h.userId} className={h.used ? 'opacity-50 line-through' : ''}>
+        {(overview.holders || []).map((h, i) => (
+          <li key={`${h.userId}-${h.type}-${i}`} className={h.used ? 'opacity-50 line-through' : ''}>
             {playerName(h.userId, players)}: {CARD_NAMES_PL[h.type] || h.type}
           </li>
         ))}
-        {overview.mafia.map((c) => (
-          <li key={c.type} className={c.used ? 'opacity-50 line-through' : ''}>
-            Mafia: {CARD_NAMES_PL[c.type] || c.type}
+        {team.map((c) => (
+          <li key={`${c.team}-${c.type}`} className={c.used ? 'opacity-50 line-through' : ''}>
+            {c.team === 'mafia' ? 'Mafia (wspólna)' : 'Obywatele (wspólna)'}: {CARD_NAMES_PL[c.type] || c.type}
           </li>
         ))}
       </ul>

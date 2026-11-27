@@ -32,14 +32,16 @@ export async function resolveVotes(state, pb) {
 
   const eliminatedId = candidates[0];
 
-  // Karta obrony (tryb zaawansowany, wersja „B”): jedna zgłoszona tarcza unieważnia
-  // wyrzucenie osoby z największą liczbą głosów — niezależnie od tego, kto ją zgłosił.
-  if (state.shieldUsedBy?.length) {
+  // Tarcza (tryb zaawansowany) chroni wyłącznie członka SWOJEJ drużyny: tarcza obywateli
+  // unieważnia wyrzucenie obywatela, tarcza mafii — mafiosa. Wyrzucony z drugiej drużyny odpada.
+  const targetTeam = state.roles?.[eliminatedId] === 'mafia' ? 'mafia' : 'town';
+  const savers = (state.shieldUsedBy || []).filter((s) => s.team === targetTeam);
+  if (savers.length) {
     return {
       eliminatedId: null,
       outcome: 'shielded',
       shieldedId: eliminatedId,
-      shieldedBy: state.shieldUsedBy.map((s) => s.userId),
+      shieldedBy: savers.map((s) => s.userId),
     };
   }
 
@@ -59,7 +61,7 @@ export async function resolveVotes(state, pb) {
     }
   }
 
-  return { eliminatedId, outcome: 'eliminated' };
+  return { eliminatedId, outcome: 'eliminated', voteTargetId: eliminatedId };
 }
 
 export async function checkWinCondition(state, pb) {

@@ -3,6 +3,7 @@ import { presenceSetRoom, presenceClearRoom, removePendingInvite } from '../game
 import { buildRoomPlayerList } from '../game/roomPlayers.js';
 import { addBotToRoom } from '../game/bots.js';
 import { ensureAdminAuth } from '../lib/pocketbase.js';
+import { normalizeCardSettings } from '../game/cards.js';
 
 function clearDisconnectTimer(state, userId) {
   const t = state?.disconnectTimers?.get(userId);
@@ -30,20 +31,6 @@ function normalizeRoomSettings(settings) {
   next.doctor_count = Math.max(1, Math.floor(Number(next.doctor_count) || 1));
   next.detective_count = Math.max(1, Math.floor(Number(next.detective_count) || 1));
   normalizeCardSettings(next);
-  return next;
-}
-
-/** Ustawienia trybu „Mafia zaawansowana” (karty mocy). */
-function normalizeCardSettings(next) {
-  next.advanced_mode = next.advanced_mode === true;
-  next.card_check_enabled = next.card_check_enabled !== false;
-  next.card_shield_citizen_enabled = next.card_shield_citizen_enabled !== false;
-  next.card_shield_mafia_enabled = next.card_shield_mafia_enabled !== false;
-  next.card_mafia_special = ['none', 'alibi', 'jam', 'false_lead'].includes(next.card_mafia_special)
-    ? next.card_mafia_special
-    : 'alibi';
-  next.card_min_round = Math.max(1, Math.floor(Number(next.card_min_round) || 3));
-  next.check_card_count = Math.max(1, Math.floor(Number(next.check_card_count) || 1));
   return next;
 }
 
@@ -288,12 +275,14 @@ export function registerLobbyHandlers(io, socket, pb) {
         'phase_timer_vote_sec',
         'self_vote',
         'advanced_mode',
-        'card_check_enabled',
-        'card_shield_citizen_enabled',
-        'card_shield_mafia_enabled',
-        'card_mafia_special',
         'card_min_round',
-        'check_card_count',
+        'card_assignment',
+        'card_citizen_count',
+        'card_citizen_pool',
+        'card_citizen_manual',
+        'card_mafia_count',
+        'card_mafia_pool',
+        'card_mafia_manual',
       ];
 
       const nextSettings = { ...(state.settings || {}) };
